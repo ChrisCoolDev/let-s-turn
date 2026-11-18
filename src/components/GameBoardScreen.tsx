@@ -448,7 +448,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   const rows = keyboardLayout === 'AZERTY' ? AZERTY_ROWS : QWERTY_ROWS;
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-4 pb-5 pt-3.5">
+    <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-between px-4 pb-5 pt-3.5">
       {/* TOP BAR épurée en 2 lignes : Retour + Barre de progression / Avatar + Flamme + Share */}
       <header className="space-y-3">
         {/* Ligne 1 : Bouton retour + barre de progression verte */}
@@ -456,7 +456,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           <button
             type="button"
             onClick={onBackToHub}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-black/5"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-black/5"
             aria-label="Retour à l'accueil"
           >
             <ArrowLeft className="h-5 w-5 stroke-[2.75]" />
@@ -477,31 +477,31 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           <div className="flex min-w-0 items-center gap-2.5">
             <FigmaAvatar
               avatarId={partner.avatarId}
-              size={40}
+              size={42}
               ringColor={partner.color}
               ringGapColor="var(--bg-app)"
               onlineDot={partner.online}
             />
             <div className="min-w-0 leading-tight">
-              <p className="truncate text-base font-black" style={{ color: 'var(--text-primary)' }}>
+              <p className="truncate text-[17px] font-black" style={{ color: 'var(--text-primary)' }}>
                 {partner.name}
               </p>
               {room.status === 'completed' ? (
                 <button
                   type="button"
                   onClick={() => onOpenVictory(room.code)}
-                  className="text-[13px] font-black text-[var(--duo-green-text)] hover:underline"
+                  className="text-sm font-black text-[var(--duo-green-text)] hover:underline"
                 >
                   🎉 Terminé ! Voir le résumé
                 </button>
               ) : isMyTurn ? (
                 <div className="mt-0.5 flex items-center gap-1.5">
-                  <p className="truncate text-[13px] font-extrabold text-[var(--duo-green-text)]">
+                  <p className="truncate text-sm font-extrabold text-[var(--duo-green-text)]">
                     C&apos;est ton tour ! · Coup {totalMovesUsed}/{room.optimalPar}
                   </p>
                   {hasTurnCountdown && (
                     <span
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-black tabular-nums"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-black tabular-nums"
                       style={{
                         backgroundColor: isLowTime
                           ? 'var(--duo-red-bg)'
@@ -512,20 +512,20 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                       }}
                       title="Temps restant pour ton tour"
                     >
-                      <Clock className="h-2.5 w-2.5 stroke-[2.75]" />
+                      <Clock className="h-3 w-3 stroke-[2.75]" />
                       {remainingSeconds}s
                     </span>
                   )}
                 </div>
               ) : (
                 <div className="mt-0.5 flex items-center gap-1.5">
-                  <p className="truncate text-[13px] font-extrabold text-[var(--duo-gold-text)]">
+                  <p className="truncate text-sm font-extrabold text-[var(--duo-gold-text)]">
                     {partner.isTyping ? `${partner.name} tape...` : `Tour de ${partner.name}...`} ·
                     Coup {totalMovesUsed}/{room.optimalPar}
                   </p>
                   {showPartnerCountdown && (
                     <span
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-black tabular-nums"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-black tabular-nums"
                       style={{
                         backgroundColor: isLowTime
                           ? 'var(--duo-red-bg)'
@@ -536,7 +536,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                       }}
                       title="Passage auto du tour si inactif"
                     >
-                      <Clock className="h-2.5 w-2.5 stroke-[2.75]" />
+                      <Clock className="h-3 w-3 stroke-[2.75]" />
                       {remainingSeconds}s
                     </span>
                   )}
@@ -547,11 +547,11 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
           <div className="flex shrink-0 items-center gap-2">
             <div
-              className="flex h-9 items-center gap-1 rounded-xl border-2 border-[var(--border-tile)] px-2.5"
+              className="flex h-10 items-center gap-1.5 rounded-xl border-2 border-[var(--border-tile)] px-3"
               title="Jours consécutifs joués en duo"
             >
               <FigmaFlameIcon size={18} />
-              <span className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
+              <span className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
                 {profile.streak}
               </span>
             </div>
@@ -559,7 +559,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             <button
               type="button"
               onClick={handleInviteCopy}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-[var(--border-tile)] text-[var(--text-muted)] transition hover:text-[var(--duo-blue)] active:scale-95"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-[var(--border-tile)] text-[var(--text-muted)] transition hover:text-[var(--duo-blue)] active:scale-95"
               aria-label="Partager la partie"
               title="Partager la partie"
             >
@@ -573,7 +573,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       <main className="my-2 flex flex-1 flex-col items-center justify-start pt-4">
         {/* Titre Figma node 1:34 : "Let’s turn WINE to SLIM" */}
         <h1
-          className="text-center text-[21px] font-extrabold tracking-tight"
+          className="text-center text-[22px] font-extrabold tracking-tight"
           style={{ color: 'var(--text-primary)' }}
         >
           Let&apos;s turn <span className="font-black">{room.startWord}</span> to{' '}
@@ -581,10 +581,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         </h1>
 
         {/* Toast discret pour erreurs / indices / notifications */}
-        <div className="mt-2 flex h-8 items-center justify-center">
+        <div className="mt-2.5 flex min-h-8 items-center justify-center">
           {toast ? (
             <div
-              className={`animate-pop-in rounded-full px-3.5 py-1 text-[13px] font-extrabold shadow-sm ${
+              className={`animate-pop-in rounded-full px-4 py-1 text-sm font-extrabold shadow-sm ${
                 toast.tone === 'error'
                   ? 'bg-[var(--duo-red-bg)] text-[var(--duo-red-text)]'
                   : toast.tone === 'hint'
@@ -595,7 +595,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               {toast.text}
             </div>
           ) : (
-            <p className="text-[13px] font-bold text-[var(--text-muted)]">
+            <p className="text-center text-sm font-bold text-[var(--text-muted)]">
               {!isMyTurn && room.status === 'active'
                 ? showPartnerCountdown
                   ? `En attente de ${partner.name} — tour auto dans ${remainingSeconds}s`
@@ -607,10 +607,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           )}
         </div>
 
-        {/* Rangée de Tuiles 3D Tactiles (Figma Frame 1:23 / 1:36) */}
+        {/* Rangée de Tuiles 3D Tactiles */}
         <div
-          className={`mt-4 flex items-center justify-center ${
-            room.wordLength === 5 ? 'gap-2' : 'gap-[12px]'
+          className={`mt-4 flex w-full items-center justify-center ${
+            room.wordLength === 5 ? 'gap-2' : 'gap-2.5'
           } ${shakeBoard ? 'animate-shake' : ''}`}
           role="group"
           aria-label="Tuiles du mot actuel"
@@ -622,7 +622,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             const isHinted = hintIndex === idx && !isDraftedHere;
             const isFlipped = flippedIndex === idx;
 
-            const tileWidth = room.wordLength === 5 ? 'w-[54px]' : 'w-[60px]';
+            const tileSizeClass =
+              room.wordLength === 5
+                ? 'h-[54px] flex-1 max-w-[64px] text-[28px]'
+                : 'h-[58px] flex-1 max-w-[74px] text-[32px]';
 
             let letterColor = 'var(--text-tile)';
             if (shakeBoard) {
@@ -639,7 +642,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                 type="button"
                 onClick={() => handleTileSelect(idx)}
                 data-tile-index={idx}
-                className={`duo-tile flex h-[48px] ${tileWidth} items-center justify-center text-[30px] font-semibold leading-none ${
+                className={`duo-tile flex ${tileSizeClass} items-center justify-center font-semibold leading-none ${
                   shakeBoard
                     ? 'duo-tile-error'
                     : isHinted
@@ -659,9 +662,9 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
         {/* Rappel de l'indice lettre cible si révélé */}
         {hintChar && hintIndex !== null && (
-          <p className="mt-2.5 text-[13px] font-black text-[var(--duo-gold-text)]">
+          <p className="mt-2.5 text-sm font-black text-[var(--duo-gold-text)]">
             💡 Lettre suggérée pour la tuile {hintIndex + 1} :{' '}
-            <span className="rounded bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-[var(--duo-gold-text)]">
+            <span className="rounded bg-[var(--duo-gold-bg)] px-2 py-0.5 text-[var(--duo-gold-text)]">
               {hintChar}
             </span>
           </p>
@@ -670,7 +673,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         {/* Vérification en direct que la lettre remplacée forme un mot qui a du sens */}
         {hasDraftChange && draftMeaning && (
           <div
-            className={`animate-pop-in mt-3.5 flex w-full max-w-[360px] items-start gap-2.5 rounded-2xl border-2 px-3.5 py-2.5 text-left ${
+            className={`animate-pop-in mt-4 flex w-full items-start gap-2.5 rounded-2xl border-2 px-4 py-3 text-left ${
               alreadyPlayedStep !== null
                 ? 'border-[var(--duo-gold)] bg-[var(--duo-gold-bg)] text-[var(--duo-gold-text)]'
                 : draftMeaning.valid
@@ -681,14 +684,14 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             aria-live="polite"
           >
             {alreadyPlayedStep !== null ? (
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--duo-orange)]" />
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--duo-orange)]" />
             ) : draftMeaning.valid ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--duo-green)]" />
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--duo-green)]" />
             ) : (
-              <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--duo-red)]" />
+              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--duo-red)]" />
             )}
             <div className="min-w-0 flex-1 leading-snug">
-              <p className="text-sm font-black">
+              <p className="text-[15px] font-black">
                 {alreadyPlayedStep !== null
                   ? `${draftWord} déjà joué (${
                       alreadyPlayedStep === 0 ? 'mot de départ' : `étape ${alreadyPlayedStep}`
@@ -697,7 +700,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   ? `✓ ${draftWord} a du sens !`
                   : `✗ "${draftWord}" n'a pas de sens`}
               </p>
-              <p className="mt-0.5 truncate text-[13px] font-bold opacity-90">
+              <p className="mt-0.5 truncate text-sm font-bold opacity-90">
                 {alreadyPlayedStep !== null
                   ? 'Choisis une autre lettre pour avancer sans tourner en rond.'
                   : draftMeaning.valid
@@ -708,8 +711,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           </div>
         )}
 
-        {/* Journal Conversationnel Figma Frame 2 (node 2:16) */}
-        <div className="mt-5 w-full max-w-[360px] space-y-2 text-center">
+        {/* Journal Conversationnel */}
+        <div className="mt-5 w-full space-y-2 text-center">
           {recentMoves.length === 0 ? (
             <p className="text-base font-bold text-[var(--text-muted)]">
               Mot de départ : <span className="text-[var(--text-primary)]">{room.startWord}</span> — À vous de
@@ -731,8 +734,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
           {/* Sens du mot actuellement posé sur le plateau */}
           {!hasDraftChange && currentWordMeaning?.valid && currentWordMeaning.definition && (
-            <div className="mx-auto mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border-tile)] bg-[var(--bg-muted)] px-3 py-1 text-[13px] font-extrabold text-[var(--text-muted)]">
-              <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--duo-blue)]" />
+            <div className="mx-auto mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border-tile)] bg-[var(--bg-muted)] px-3.5 py-1.5 text-sm font-extrabold text-[var(--text-muted)]">
+              <BookOpen className="h-4 w-4 shrink-0 text-[var(--duo-blue)]" />
               <span className="truncate">
                 <strong className="text-[var(--text-primary)]">{room.currentWord}</strong> :{' '}
                 {currentWordMeaning.definition}
@@ -743,24 +746,24 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
         {/* Chaîne d'évolution verticale scrollable / dépliable */}
         {room.moves.length > 0 && (
-          <div className="mt-4 w-full max-w-[360px]">
+          <div className="mt-4 w-full">
             <button
               type="button"
               onClick={() => setShowFullChain((v) => !v)}
-              className="mx-auto flex items-center gap-1.5 rounded-full border border-[var(--border-tile)] px-3.5 py-1.5 text-[13px] font-extrabold text-[var(--text-muted)] hover:bg-black/5"
+              className="mx-auto flex items-center gap-1.5 rounded-full border border-[var(--border-tile)] px-4 py-1.5 text-sm font-extrabold text-[var(--text-muted)] hover:bg-black/5"
             >
-              <History className="h-3.5 w-3.5 text-[var(--duo-blue)]" />
+              <History className="h-4 w-4 text-[var(--duo-blue)]" />
               Chaîne complète ({room.moves.length + 1} mots)
               {showFullChain ? (
-                <ChevronUp className="h-3.5 w-3.5" />
+                <ChevronUp className="h-4 w-4" />
               ) : (
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="h-4 w-4" />
               )}
             </button>
 
             {showFullChain && (
               <div className="duo-card mt-2 max-h-40 space-y-2 overflow-y-auto p-3.5">
-                <div className="flex items-center justify-between text-[13px] font-extrabold">
+                <div className="flex items-center justify-between text-sm font-extrabold">
                   <span className="rounded-lg bg-[var(--bg-muted)] px-2 py-0.5 text-[var(--text-muted)]">
                     Départ
                   </span>
@@ -771,7 +774,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                 {room.moves.map((move, stepIdx) => (
                   <div
                     key={move.id}
-                    className="flex items-center justify-between border-t border-[var(--border-tile)] pt-1.5 text-[13px] font-extrabold"
+                    className="flex items-center justify-between border-t border-[var(--border-tile)] pt-1.5 text-sm font-extrabold"
                   >
                     <span className="flex items-center gap-1.5">
                       <span
@@ -813,7 +816,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               type="button"
               onClick={handleHintClick}
               disabled={!canPlayManually || room.status === 'completed'}
-              className={`duo-btn flex items-center gap-1.5 px-3 py-2 text-[13px] ${
+              className={`duo-btn flex items-center gap-1.5 px-3.5 py-2.5 text-sm ${
                 !canPlayManually || room.status === 'completed'
                   ? 'duo-btn-disabled'
                   : 'duo-btn-white'
@@ -821,8 +824,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             >
               <Lightbulb className="h-4 w-4 text-[#ffc800]" />
               Indice
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-[11px] font-black text-[var(--duo-gold-text)]">
-                1 <Star className="h-2.5 w-2.5 fill-[#ffc800] text-[#e5a400]" />
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-xs font-black text-[var(--duo-gold-text)]">
+                1 <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
               </span>
             </button>
 
@@ -830,7 +833,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               type="button"
               onClick={() => onUndoMove(room.code)}
               disabled={room.moves.length === 0 || room.status === 'completed'}
-              className={`duo-btn flex items-center gap-1.5 px-3 py-2 text-[13px] ${
+              className={`duo-btn flex items-center gap-1.5 px-3.5 py-2.5 text-sm ${
                 room.moves.length === 0 || room.status === 'completed'
                   ? 'duo-btn-disabled'
                   : 'duo-btn-white'
@@ -845,7 +848,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           <button
             type="button"
             onClick={() => setKeyboardLayout((l) => (l === 'AZERTY' ? 'QWERTY' : 'AZERTY'))}
-            className="rounded-xl border-2 border-[var(--border-tile)] px-3 py-1.5 text-xs font-black text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="rounded-xl border-2 border-[var(--border-tile)] px-3 py-2 text-[13px] font-black text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
             {keyboardLayout}
           </button>
@@ -873,7 +876,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                     type="button"
                     disabled={!canPlayManually || room.status === 'completed'}
                     onClick={() => handleKeyPress(key)}
-                    className={`duo-key flex h-11 flex-1 items-center justify-center text-[15px] font-black ${
+                    className={`duo-key flex h-12 flex-1 items-center justify-center text-base font-black ${
                       isActiveChar
                         ? '!border-[var(--duo-blue-shadow)] !bg-[var(--duo-blue)] !text-white'
                         : matchesTargetAtSelected
@@ -890,10 +893,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   type="button"
                   disabled={!canPlayManually || room.status === 'completed'}
                   onClick={handleBackspace}
-                  className="duo-key flex h-11 w-12 items-center justify-center bg-[var(--bg-muted)] text-[var(--text-primary)]"
+                  className="duo-key flex h-12 w-12 items-center justify-center bg-[var(--bg-muted)] text-[var(--text-primary)]"
                   aria-label="Effacer"
                 >
-                  <Delete className="h-4 w-4" />
+                  <Delete className="h-5 w-5" />
                 </button>
               )}
             </div>
@@ -905,7 +908,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           type="button"
           onClick={handleValidate}
           disabled={room.status === 'active' && (!hasDraftChange || !canPlayManually)}
-          className={`duo-btn flex w-full items-center justify-center gap-2 py-3.5 text-base ${
+          className={`duo-btn flex w-full items-center justify-center gap-2 py-4 text-[17px] ${
             room.status === 'completed'
               ? 'duo-btn-green'
               : hasDraftChange && canPlayManually

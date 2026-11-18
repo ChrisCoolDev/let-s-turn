@@ -90,27 +90,27 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   }, [room.startWord, room.moves]);
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-4 pb-6 pt-6">
+    <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-between px-4 pb-6 pt-6">
       <div>
         {/* Bannière Victoire */}
         <div className="animate-pop-in text-center">
           <div className="mb-3.5 flex items-center justify-center -space-x-3">
             <FigmaAvatar
               avatarId={profile.avatarId}
-              size={58}
+              size={60}
               ringColor={profile.color}
               ringGapColor="var(--bg-app)"
             />
             <FigmaAvatar
               avatarId={partner.avatarId}
-              size={58}
+              size={60}
               ringColor={partner.color}
               ringGapColor="var(--bg-app)"
             />
           </div>
 
           <h1
-            className="text-[26px] font-black leading-tight tracking-tight"
+            className="text-[28px] font-black leading-tight tracking-tight"
             style={{ color: 'var(--text-primary)' }}
           >
             {starRating === 3
@@ -120,7 +120,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               : 'Chaîne complétée !'}
           </h1>
 
-          <p className="mt-1 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
+          <p className="mt-1.5 text-[15px] font-bold" style={{ color: 'var(--text-muted)' }}>
             {room.startWord} → {room.targetWord} avec {partner.name} en {durationSec}s
           </p>
 
@@ -150,36 +150,36 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           >
             <div>
               <p
-                className="text-[22px] font-black tabular-nums leading-none"
+                className="text-2xl font-black tabular-nums leading-none"
                 style={{
                   color: isOptimal ? 'var(--duo-green-text)' : 'var(--duo-orange)',
                 }}
               >
                 {actualSteps}
               </p>
-              <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+              <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
                 Coups
               </p>
             </div>
             <div>
               <p
-                className="text-[22px] font-black tabular-nums leading-none"
+                className="text-2xl font-black tabular-nums leading-none"
                 style={{ color: 'var(--duo-blue-text)' }}
               >
                 {room.optimalPar}
               </p>
-              <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+              <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
                 Par BFS
               </p>
             </div>
             <div>
               <p
-                className="text-[22px] font-black tabular-nums leading-none"
+                className="text-2xl font-black tabular-nums leading-none"
                 style={{ color: 'var(--text-primary)' }}
               >
                 {durationSec}s
               </p>
-              <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+              <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
                 Temps
               </p>
             </div>
@@ -212,7 +212,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                     />
                   )}
                   <span
-                    className="inline-flex items-center rounded-lg border px-2.5 py-1 text-xs font-black tracking-wider"
+                    className="inline-flex items-center rounded-lg border px-2.5 py-1 text-[13px] font-black tracking-wider"
                     style={{
                       backgroundColor: isFinal
                         ? 'color-mix(in srgb, var(--duo-green) 14%, var(--bg-tile))'
@@ -243,11 +243,11 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
 
         {/* Progression XP & Récompenses */}
         <div className="duo-card mt-3.5 p-4">
-          <div className="flex items-center justify-between gap-2 text-sm font-black">
+          <div className="flex items-center justify-between gap-2 text-[15px] font-black">
             <span className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
               <FigmaFlameIcon size={18} />+{earnedXp} XP · +{earnedStars} ⭐
             </span>
-            <span className="text-[13px]" style={{ color: 'var(--duo-blue-text)' }}>
+            <span className="text-sm" style={{ color: 'var(--duo-blue-text)' }}>
               Niv. {levelInfo.level} · {levelInfo.title}
             </span>
           </div>

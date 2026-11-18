@@ -64,17 +64,17 @@ export const PwaInstallBanner: React.FC = () => {
           <Smartphone className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-extrabold leading-tight" style={{ color: 'var(--text-primary)' }}>
+          <p className="text-sm font-extrabold leading-tight" style={{ color: 'var(--text-primary)' }}>
             Installe l&apos;app sur ton écran d&apos;accueil
           </p>
-          <p className="mt-0.5 text-xs font-bold leading-snug" style={{ color: 'var(--text-muted)' }}>
+          <p className="mt-0.5 text-[13px] font-bold leading-snug" style={{ color: 'var(--text-muted)' }}>
             Pour recevoir les tours de ton partenaire en direct !
           </p>
         </div>
         <button
           type="button"
           onClick={handleInstallClick}
-          className="duo-btn duo-btn-blue shrink-0 px-3 py-2 text-xs"
+          className="duo-btn duo-btn-blue shrink-0 px-3.5 py-2 text-[13px]"
         >
           {isIos ? 'Voir' : 'Installer'}
         </button>

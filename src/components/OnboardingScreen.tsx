@@ -32,7 +32,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   };
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-4 py-6">
+    <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-between px-4 py-6">
       <div>
         {/* En-tête de marque */}
         <div className="flex items-center justify-between">

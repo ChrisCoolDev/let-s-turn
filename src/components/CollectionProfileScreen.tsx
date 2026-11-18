@@ -78,7 +78,7 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
       </div>
 
       <div className="mt-4 border-t pt-3.5" style={{ borderColor: 'var(--border-tile)' }}>
-        <div className="flex items-baseline justify-between gap-2 text-[13px]">
+        <div className="flex items-baseline justify-between gap-2 text-sm">
           <span className="font-extrabold" style={{ color: 'var(--text-primary)' }}>
             Victoires au Par
           </span>
@@ -91,7 +91,7 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
         </div>
 
         <div
-          className="mt-2 h-2 w-full overflow-hidden rounded-full"
+          className="mt-2 h-2.5 w-full overflow-hidden rounded-full"
           style={{ backgroundColor: 'var(--bg-muted)' }}
         >
           <div
@@ -103,7 +103,7 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
           />
         </div>
 
-        <p className="mt-2.5 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+        <p className="mt-2.5 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
           {profile.noHintWins} sans indice · {profile.gamesPlayed} parties ·{' '}
           {profile.longestWordSolved} lettres max
         </p>
@@ -121,12 +121,12 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
     <div className="duo-card p-3.5">
       {/* Méta duo & score Par */}
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
+        <p className="truncate text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
           Avec <span style={{ color: 'var(--text-primary)' }}>{chain.partnerName}</span> ·{' '}
           {chain.language === 'FR' ? 'FR' : 'EN'} · {formatChainDate(chain.completedAt)}
         </p>
         <span
-          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-black"
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-0.5 text-[13px] font-black"
           style={{
             backgroundColor: `color-mix(in srgb, var(${accentVar}) 15%, transparent)`,
             color: `var(${accentShadowVar})`,
@@ -134,7 +134,7 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
         >
           {isOptimal ? (
             <>
-              <Check className="h-3 w-3 stroke-[3]" />
+              <Check className="h-3.5 w-3.5 stroke-[3]" />
               Par {chain.optimalSteps}
             </>
           ) : (
@@ -165,12 +165,12 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
             <React.Fragment key={`${word}-${idx}`}>
               {idx > 0 && (
                 <ArrowRight
-                  className="h-3 w-3 shrink-0 stroke-[2.5]"
+                  className="h-3.5 w-3.5 shrink-0 stroke-[2.5]"
                   style={{ color: 'var(--text-muted)' }}
                 />
               )}
               <span
-                className="inline-flex items-center rounded-lg border px-2.5 py-0.5 text-xs font-black tracking-wider"
+                className="inline-flex items-center rounded-lg border px-2.5 py-1 text-[13px] font-black tracking-wider"
                 style={{
                   backgroundColor: isFinal
                     ? 'color-mix(in srgb, var(--duo-green) 14%, var(--bg-tile))'
@@ -258,7 +258,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
   };
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-4 pb-8 pt-4">
+    <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-8 pt-4">
       {/* En-tête */}
       <header className="flex items-center justify-between">
         <button
@@ -270,7 +270,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-[19px] font-black" style={{ color: 'var(--text-primary)' }}>
+        <h1 className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
           Collection &amp; Profil
         </h1>
         <div
@@ -278,7 +278,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           style={{ borderColor: 'var(--duo-gold)', backgroundColor: 'var(--duo-gold-bg)' }}
         >
           <Star className="h-4 w-4 fill-[#ffc800] text-[#e5a400]" />
-          <span className="text-[15px] font-black" style={{ color: 'var(--duo-gold-text)' }}>
+          <span className="text-base font-black" style={{ color: 'var(--duo-gold-text)' }}>
             {profile.stars}
           </span>
         </div>
@@ -286,25 +286,25 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
 
       {/* Carte Profil */}
       <div className="duo-card mt-4 flex items-center gap-3.5 p-4">
-        <FigmaAvatar avatarId={profile.avatarId} size={60} ringColor={profile.color} />
+        <FigmaAvatar avatarId={profile.avatarId} size={62} ringColor={profile.color} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-[19px] font-black" style={{ color: 'var(--text-primary)' }}>
+            <h2 className="truncate text-xl font-black" style={{ color: 'var(--text-primary)' }}>
               {profile.name}
             </h2>
             <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-black"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-black"
               style={{ backgroundColor: 'var(--duo-orange-bg)', color: 'var(--duo-orange)' }}
             >
-              <FigmaFlameIcon size={13} />
+              <FigmaFlameIcon size={14} />
               {profile.streak}j
             </span>
           </div>
-          <p className="text-[13px] font-extrabold" style={{ color: 'var(--duo-blue-text)' }}>
+          <p className="text-sm font-extrabold" style={{ color: 'var(--duo-blue-text)' }}>
             Niveau {levelInfo.level} · {levelInfo.title}
           </p>
           <div
-            className="mt-2 h-2 w-full overflow-hidden rounded-full"
+            className="mt-2 h-2.5 w-full overflow-hidden rounded-full"
             style={{ backgroundColor: 'var(--bg-muted)' }}
           >
             <div
@@ -331,7 +331,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`duo-btn flex items-center justify-center gap-1.5 py-2.5 text-[13px] ${
+              className={`duo-btn flex items-center justify-center gap-1.5 py-3 text-sm ${
                 active ? 'duo-btn-blue' : 'duo-btn-white'
               }`}
             >
@@ -344,7 +344,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
       {/* Contenu Onglet 1 : Mur des Badges */}
       {activeTab === 'badges' && (
         <section className="mt-4 space-y-2.5">
-          <p className="text-[13px] font-extrabold" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm font-extrabold" style={{ color: 'var(--text-muted)' }}>
             {profile.unlockedBadges.length} / {BADGE_DEFINITIONS.length} badges débloqués
           </p>
           {BADGE_DEFINITIONS.map((badge) => {
@@ -366,12 +366,12 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
+                    <h3 className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
                       {badge.title}
                     </h3>
                     {unlocked ? (
                       <span
-                        className="rounded-full px-2 py-0.5 text-[11px] font-black"
+                        className="rounded-full px-2.5 py-0.5 text-xs font-black"
                         style={{
                           backgroundColor: 'var(--duo-green-bg)',
                           color: 'var(--duo-green-text)',
@@ -381,7 +381,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                       </span>
                     ) : (
                       <span
-                        className="inline-flex items-center rounded-full px-2 py-0.5"
+                        className="inline-flex items-center rounded-full px-2.5 py-0.5"
                         style={{
                           backgroundColor: 'var(--bg-muted)',
                           color: 'var(--text-muted)',
@@ -389,11 +389,11 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                         aria-label="Verrouillé"
                         title="Verrouillé"
                       >
-                        <Lock className="h-3 w-3" />
+                        <Lock className="h-3.5 w-3.5" />
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
+                  <p className="mt-0.5 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
                     {unlocked ? badge.description : badge.conditionLabel}
                   </p>
                 </div>
@@ -413,14 +413,14 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           <div>
             <div className="mb-3 flex items-center justify-between">
               <h3
-                className="text-[13px] font-black uppercase tracking-wider"
+                className="text-sm font-black uppercase tracking-wider"
                 style={{ color: 'var(--text-muted)' }}
               >
                 Dernières chaînes
               </h3>
               {profile.savedBestChains.length > 0 && (
                 <span
-                  className="text-xs font-extrabold"
+                  className="text-[13px] font-extrabold"
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {profile.savedBestChains.length} enregistrée
@@ -431,10 +431,10 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
 
             {profile.savedBestChains.length === 0 ? (
               <div className="duo-card p-5 text-center">
-                <p className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
                   Aucune chaîne enregistrée
                 </p>
-                <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
+                <p className="mt-1 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
                   Termine une partie en duo pour conserver votre parcours ici.
                 </p>
               </div>
@@ -520,7 +520,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                     </div>
 
                     <p
-                      className="mt-2.5 truncate px-0.5 text-sm font-black"
+                      className="mt-2.5 truncate px-0.5 text-[15px] font-black"
                       style={{ color: 'var(--text-primary)' }}
                     >
                       {item.name}
@@ -529,7 +529,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                     <div className="mt-2">
                       {active ? (
                         <span
-                          className="flex h-9 w-full items-center justify-center gap-1 rounded-xl text-[13px] font-black uppercase tracking-wide"
+                          className="flex h-10 w-full items-center justify-center gap-1 rounded-xl text-sm font-black uppercase tracking-wide"
                           style={{ color: 'var(--duo-green-text)' }}
                         >
                           <Check className="h-4 w-4 stroke-[3]" />
@@ -539,7 +539,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                         <button
                           type="button"
                           onClick={() => handleThemeAction(item.id, 0, item.name)}
-                          className="duo-btn duo-btn-white h-9 w-full text-[13px] uppercase tracking-wide"
+                          className="duo-btn duo-btn-white h-10 w-full text-sm uppercase tracking-wide"
                         >
                           Équiper
                         </button>
@@ -547,7 +547,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                         <button
                           type="button"
                           onClick={() => handleThemeAction(item.id, item.priceStars, item.name)}
-                          className="duo-btn duo-btn-gold flex h-9 w-full items-center justify-center gap-1 text-[13px]"
+                          className="duo-btn duo-btn-gold flex h-10 w-full items-center justify-center gap-1 text-sm"
                         >
                           <Star className="h-3.5 w-3.5 fill-current" />
                           {item.priceStars}
@@ -563,7 +563,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           {/* Effets de célébration */}
           <div>
             <h3
-              className="mb-3 text-[13px] font-black uppercase tracking-wider"
+              className="mb-3 text-sm font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
               Effets de victoire
@@ -598,13 +598,13 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                     </span>
                     <span className="min-w-0">
                       <span
-                        className="block truncate text-sm font-black"
+                        className="block truncate text-[15px] font-black"
                         style={{ color: 'var(--text-primary)' }}
                       >
                         {visual.label}
                       </span>
                       <span
-                        className="mt-0.5 flex items-center gap-1 text-xs font-extrabold"
+                        className="mt-0.5 flex items-center gap-1 text-[13px] font-extrabold"
                         style={{
                           color: active
                             ? 'var(--duo-green-text)'

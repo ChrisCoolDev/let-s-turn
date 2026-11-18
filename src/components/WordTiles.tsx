@@ -15,8 +15,8 @@ interface WordTilesProps {
 // Les dimensions s'adaptent à la longueur du mot pour tenir sur un écran de 375 px
 const SIZE_CLASSES: Record<TileSize, Record<'short' | 'long', string>> = {
   sm: {
-    short: 'h-8 w-7 rounded-lg text-sm',
-    long: 'h-7 w-[22px] rounded-md text-xs',
+    short: 'h-9 w-[31px] rounded-lg text-[15px]',
+    long: 'h-8 w-[26px] rounded-md text-sm',
   },
   lg: {
     short: 'h-12 w-11 rounded-xl text-xl',
@@ -34,7 +34,7 @@ export const WordTiles: React.FC<WordTilesProps> = ({
   className = '',
 }) => {
   const sizeClass = SIZE_CLASSES[size][word.length > 4 ? 'long' : 'short'];
-  const gap = size === 'lg' ? 'gap-1.5' : 'gap-1';
+  const gap = size === 'lg' ? 'gap-1.5' : word.length > 4 ? 'gap-0.5' : 'gap-1';
 
   return (
     <div className={`flex ${gap} ${className}`}>

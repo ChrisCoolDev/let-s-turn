@@ -165,7 +165,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-duel-title"
-        className="animate-sheet-up max-h-[90dvh] w-full max-w-[430px] overflow-y-auto rounded-t-3xl border-t-2 px-4 pb-7 pt-5 shadow-2xl sm:rounded-3xl sm:border-2 sm:p-5"
+        className="animate-sheet-up max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border-t-2 px-4 pb-7 pt-5 shadow-2xl sm:rounded-3xl sm:border-2 sm:p-5"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-tile)',

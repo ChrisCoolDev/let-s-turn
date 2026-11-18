@@ -73,13 +73,13 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
           <div className="min-w-0 leading-tight">
             <div className="flex items-center gap-1.5">
               <span
-                className="truncate text-base font-black"
+                className="truncate text-[17px] font-black"
                 style={{ color: 'var(--text-primary)' }}
               >
                 Défi du jour
               </span>
               <span
-                className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-black uppercase"
+                className="shrink-0 rounded-md px-2 py-0.5 text-xs font-black uppercase"
                 style={{
                   backgroundColor: `color-mix(in srgb, ${accentColor} 15%, transparent)`,
                   color: accentShadow,
@@ -89,7 +89,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
               </span>
             </div>
             <p
-              className="mt-0.5 truncate text-[13px] font-bold"
+              className="mt-0.5 truncate text-sm font-bold"
               style={{ color: 'var(--text-muted)' }}
             >
               {isCompleted && dailyRoom
@@ -105,18 +105,18 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
 
         {isCompleted ? (
           <span
-            className="inline-flex shrink-0 items-center gap-1 rounded-xl px-3 py-1.5 text-[13px] font-black uppercase tracking-wide"
+            className="inline-flex shrink-0 items-center gap-1 rounded-xl px-3 py-1.5 text-sm font-black uppercase tracking-wide"
             style={{
               backgroundColor: 'color-mix(in srgb, var(--duo-green) 16%, transparent)',
               color: 'var(--duo-green-shadow)',
             }}
           >
-            <Check className="h-3.5 w-3.5 stroke-[3]" />
+            <Check className="h-4 w-4 stroke-[3]" />
             Fini
           </span>
         ) : (
           <span
-            className="shrink-0 rounded-xl px-3.5 py-1.5 text-[13px] font-black uppercase tracking-wide text-white"
+            className="shrink-0 rounded-xl px-3.5 py-2 text-sm font-black uppercase tracking-wide text-white"
             style={{
               backgroundColor: 'var(--duo-orange)',
               boxShadow: '0 3px 0 var(--duo-orange-shadow)',
@@ -214,7 +214,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   };
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-4 pb-8 pt-5">
+    <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-8 pt-5">
       {/* Zone 1 : En-tête (Profil & Progression) */}
       <header className="duo-card flex items-center justify-between gap-3 p-3.5">
         <button
@@ -222,17 +222,17 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           onClick={onOpenCollection}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          <FigmaAvatar avatarId={profile.avatarId} size={46} ringColor={profile.color} onlineDot />
+          <FigmaAvatar avatarId={profile.avatarId} size={48} ringColor={profile.color} onlineDot />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-[17px] font-black" style={{ color: 'var(--text-primary)' }}>
+              <span className="truncate text-lg font-black" style={{ color: 'var(--text-primary)' }}>
                 {profile.name}
               </span>
-              <span className="rounded-full bg-[var(--duo-blue-bg)] px-2 py-0.5 text-[11px] font-black text-[var(--duo-blue-text)]">
+              <span className="rounded-full bg-[var(--duo-blue-bg)] px-2 py-0.5 text-xs font-black text-[var(--duo-blue-text)]">
                 Niv. {levelInfo.level}
               </span>
             </div>
-            <p className="truncate text-[13px] font-extrabold text-[var(--text-muted)]">
+            <p className="truncate text-sm font-extrabold text-[var(--text-muted)]">
               {levelInfo.title}
             </p>
           </div>
@@ -245,7 +245,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             title="Jours consécutifs joués en duo"
           >
             <FigmaFlameIcon size={18} />
-            <span className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
+            <span className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
               {profile.streak}
             </span>
           </div>
@@ -256,7 +256,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             title="Étoiles & Boutique"
           >
             <Star className="h-4 w-4 fill-[#ffc800] text-[#e5a400]" />
-            <span className="text-[15px] font-black text-[var(--duo-gold-text)]">{profile.stars}</span>
+            <span className="text-base font-black text-[var(--duo-gold-text)]">{profile.stars}</span>
           </button>
           <button
             type="button"
@@ -285,8 +285,8 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       </header>
 
       {/* Mini barre XP du niveau */}
-      <div className="mt-3 px-1">
-        <div className="mb-1 flex items-center justify-between text-[13px] font-extrabold text-[var(--text-muted)]">
+      <div className="mt-3.5 px-1">
+        <div className="mb-1 flex items-center justify-between text-sm font-extrabold text-[var(--text-muted)]">
           <span>Progression XP</span>
           <span>
             {levelInfo.currentLevelXp} / {levelInfo.nextLevelXp} XP
@@ -305,7 +305,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       {/* Zone 2 : Parties en cours (Asynchrone & Temps réel) */}
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-[var(--text-muted)]">
+          <h2 className="flex items-center gap-2 text-[15px] font-black uppercase tracking-wider text-[var(--text-muted)]">
             Parties en cours ({activeRooms.length})
           </h2>
           {/*{completedCount > 0 && (
@@ -322,10 +322,10 @@ export const HubScreen: React.FC<HubScreenProps> = ({
 
         {activeRooms.length === 0 ? (
           <div className="duo-card p-5 text-center">
-            <p className="text-[15px] font-extrabold" style={{ color: 'var(--text-primary)' }}>
+            <p className="text-base font-extrabold" style={{ color: 'var(--text-primary)' }}>
               Aucune partie active pour le moment
             </p>
-            <p className="mt-1 text-[13px] font-bold text-[var(--text-muted)]">
+            <p className="mt-1 text-sm font-bold text-[var(--text-muted)]">
               Lance un nouveau défi pour transformer un mot avec ton partenaire !
             </p>
           </div>
@@ -361,18 +361,18 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                     <div className="flex min-w-0 items-center gap-3">
                       <FigmaAvatar
                         avatarId={partner.avatarId}
-                        size={38}
+                        size={40}
                         ringColor={partner.color}
                         onlineDot={partner.online}
                       />
                       <div className="min-w-0 leading-tight">
                         <p
-                          className="truncate text-base font-black"
+                          className="truncate text-[17px] font-black"
                           style={{ color: 'var(--text-primary)' }}
                         >
                           {partner.name}
                         </p>
-                        <p className="truncate text-[13px] font-bold text-[var(--text-muted)]">
+                        <p className="truncate text-sm font-bold text-[var(--text-muted)]">
                           {room.language === 'FR' ? 'Français' : 'Anglais'} · {room.wordLength}{' '}
                           lettres
                         </p>
@@ -381,7 +381,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
 
                     {isMyTurn ? (
                       <span
-                        className="shrink-0 rounded-xl px-3.5 py-1.5 text-[13px] font-black uppercase tracking-wide text-white"
+                        className="shrink-0 rounded-xl px-3.5 py-2 text-sm font-black uppercase tracking-wide text-white"
                         style={{
                           backgroundColor: 'var(--duo-green)',
                           boxShadow: '0 3px 0 var(--duo-green-shadow)',
@@ -390,7 +390,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                         Jouer
                       </span>
                     ) : (
-                      <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-extrabold tabular-nums text-[var(--text-muted)]">
+                      <span className="flex shrink-0 items-center gap-1.5 text-sm font-extrabold tabular-nums text-[var(--text-muted)]">
                         {(() => {
                           if (room.autoPartnerEnabled) {
                             return (
@@ -436,14 +436,14 @@ export const HubScreen: React.FC<HubScreenProps> = ({
 
                   {/* Progression */}
                   <div className="mt-4 flex items-center gap-3">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--bg-muted)]">
+                    <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--bg-muted)]">
                       <div
                         className="h-full rounded-full bg-[var(--duo-green)] transition-all duration-500"
                         style={{ width: `${Math.max(6, progress)}%` }}
                       />
                     </div>
                     <span
-                      className={`shrink-0 text-[13px] font-extrabold ${
+                      className={`shrink-0 text-sm font-extrabold ${
                         overPar ? 'text-[var(--duo-orange)]' : 'text-[var(--text-muted)]'
                       }`}
                     >
@@ -462,7 +462,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
         <button
           type="button"
           onClick={() => onOpenCreateDuel(false)}
-          className="duo-btn duo-btn-green flex w-full items-center justify-center gap-2.5 py-4 text-base"
+          className="duo-btn duo-btn-green flex w-full items-center justify-center gap-2.5 py-4 text-[17px]"
         >
           <Plus className="h-5 w-5 stroke-[3]" />
           Lancer un défi
@@ -474,9 +474,9 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             setJoinError('');
             setShowJoinModal(true);
           }}
-          className="duo-btn duo-btn-white flex w-full items-center justify-center gap-2.5 py-3.5 text-[15px]"
+          className="duo-btn duo-btn-white flex w-full items-center justify-center gap-2.5 py-4 text-base"
         >
-          <Hash className="h-4 w-4 text-[var(--duo-blue)]" />
+          <Hash className="h-5 w-5 text-[var(--duo-blue)]" />
           Rejoindre avec un code
         </button>
       </section>
