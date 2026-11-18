@@ -36,14 +36,20 @@ const STREAK_ZERO_MIGRATION_KEY = 'lets_turn_streak_zero_v1';
 const PARTNER_ID = CAROLE_PARTNER_ID;
 export const TURN_TIMEOUT_MS = 30_000;
 
-export function passTurnIfExpired(room: GameRoom, now = Date.now()): GameRoom | null {
+export function passTurnIfExpired(
+  room: GameRoom,
+  now = Date.now(),
+  graceMs = 0
+): GameRoom | null {
   if (room.status !== 'active') return null;
+  if (room.hostPlayer.playerId === room.partnerPlayer.playerId) return null;
   const turnStart = room.turnStartedAt ?? room.startedAt;
-  if (now - turnStart < TURN_TIMEOUT_MS) return null;
+  if (now - turnStart < TURN_TIMEOUT_MS + graceMs) return null;
 
   const isHostTurn = room.hostPlayer.playerId === room.currentTurnPlayerId;
   const timedOutPlayer = isHostTurn ? room.hostPlayer : room.partnerPlayer;
   const nextPlayer = isHostTurn ? room.partnerPlayer : room.hostPlayer;
+  if (timedOutPlayer.playerId === nextPlayer.playerId) return null;
 
   return {
     ...room,
@@ -464,18 +470,24 @@ export async function joinRoomRemoteOrLocal(
   player: PlayerProfile
 ): Promise<GameRoom> {
   const cleanCode = codeRaw.trim().toUpperCase();
+  const uid = await ensureSupabaseSession();
+  const resolvedPlayer = uid && player.playerId !== uid ? { ...player, playerId: uid } : player;
+
   if (cleanCode !== STARTER_ROOM_CODE) {
-    const remoteRoom = await claimRemoteRoomByCode(cleanCode, player);
+    const remoteRoom = await claimRemoteRoomByCode(cleanCode, resolvedPlayer);
     if (remoteRoom) {
-      const rooms = loadRooms(player);
+      const rooms = loadRooms(resolvedPlayer);
       rooms[cleanCode] = remoteRoom;
       saveRooms(rooms);
-      broadcastRoomUpdate(remoteRoom, player.playerId);
+      broadcastRoomUpdate(remoteRoom, resolvedPlayer.playerId);
       return remoteRoom;
     }
   }
-  const localRoom = joinOrCreateRoomByCode(cleanCode, player);
-  if (cleanCode !== STARTER_ROOM_CODE && localRoom.hostPlayer.playerId === player.playerId) {
+  const localRoom = joinOrCreateRoomByCode(cleanCode, resolvedPlayer);
+  if (
+    cleanCode !== STARTER_ROOM_CODE &&
+    localRoom.hostPlayer.playerId === resolvedPlayer.playerId
+  ) {
     void createOrUpsertRemoteRoom(localRoom);
   }
   return localRoom;

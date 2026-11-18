@@ -65,12 +65,12 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
         {headlineStats.map((stat) => (
           <div key={stat.label}>
             <p
-              className="text-xl font-black tabular-nums leading-none"
+              className="text-[22px] font-black tabular-nums leading-none"
               style={{ color: 'var(--text-primary)' }}
             >
               {stat.value}
             </p>
-            <p className="mt-1 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+            <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
               {stat.label}
             </p>
           </div>
@@ -78,7 +78,7 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
       </div>
 
       <div className="mt-4 border-t pt-3.5" style={{ borderColor: 'var(--border-tile)' }}>
-        <div className="flex items-baseline justify-between gap-2 text-xs">
+        <div className="flex items-baseline justify-between gap-2 text-[13px]">
           <span className="font-extrabold" style={{ color: 'var(--text-primary)' }}>
             Victoires au Par
           </span>
@@ -103,7 +103,7 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
           />
         </div>
 
-        <p className="mt-2.5 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+        <p className="mt-2.5 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
           {profile.noHintWins} sans indice · {profile.gamesPlayed} parties ·{' '}
           {profile.longestWordSolved} lettres max
         </p>
@@ -121,12 +121,12 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
     <div className="duo-card p-3.5">
       {/* Méta duo & score Par */}
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+        <p className="truncate text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
           Avec <span style={{ color: 'var(--text-primary)' }}>{chain.partnerName}</span> ·{' '}
           {chain.language === 'FR' ? 'FR' : 'EN'} · {formatChainDate(chain.completedAt)}
         </p>
         <span
-          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-black"
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-black"
           style={{
             backgroundColor: `color-mix(in srgb, var(${accentVar}) 15%, transparent)`,
             color: `var(${accentShadowVar})`,
@@ -170,7 +170,7 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
                 />
               )}
               <span
-                className="inline-flex items-center rounded-lg border px-2 py-0.5 text-[11px] font-black tracking-wider"
+                className="inline-flex items-center rounded-lg border px-2.5 py-0.5 text-xs font-black tracking-wider"
                 style={{
                   backgroundColor: isFinal
                     ? 'color-mix(in srgb, var(--duo-green) 14%, var(--bg-tile))'
@@ -270,7 +270,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>
+        <h1 className="text-[19px] font-black" style={{ color: 'var(--text-primary)' }}>
           Collection &amp; Profil
         </h1>
         <div
@@ -278,7 +278,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           style={{ borderColor: 'var(--duo-gold)', backgroundColor: 'var(--duo-gold-bg)' }}
         >
           <Star className="h-4 w-4 fill-[#ffc800] text-[#e5a400]" />
-          <span className="text-sm font-black" style={{ color: 'var(--duo-gold-text)' }}>
+          <span className="text-[15px] font-black" style={{ color: 'var(--duo-gold-text)' }}>
             {profile.stars}
           </span>
         </div>
@@ -289,18 +289,18 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
         <FigmaAvatar avatarId={profile.avatarId} size={60} ringColor={profile.color} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-lg font-black" style={{ color: 'var(--text-primary)' }}>
+            <h2 className="truncate text-[19px] font-black" style={{ color: 'var(--text-primary)' }}>
               {profile.name}
             </h2>
             <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-black"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-black"
               style={{ backgroundColor: 'var(--duo-orange-bg)', color: 'var(--duo-orange)' }}
             >
               <FigmaFlameIcon size={13} />
               {profile.streak}j
             </span>
           </div>
-          <p className="text-xs font-extrabold" style={{ color: 'var(--duo-blue-text)' }}>
+          <p className="text-[13px] font-extrabold" style={{ color: 'var(--duo-blue-text)' }}>
             Niveau {levelInfo.level} · {levelInfo.title}
           </p>
           <div
@@ -331,7 +331,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`duo-btn flex items-center justify-center gap-1.5 py-2.5 text-xs ${
+              className={`duo-btn flex items-center justify-center gap-1.5 py-2.5 text-[13px] ${
                 active ? 'duo-btn-blue' : 'duo-btn-white'
               }`}
             >
@@ -344,7 +344,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
       {/* Contenu Onglet 1 : Mur des Badges */}
       {activeTab === 'badges' && (
         <section className="mt-4 space-y-2.5">
-          <p className="text-xs font-extrabold" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] font-extrabold" style={{ color: 'var(--text-muted)' }}>
             {profile.unlockedBadges.length} / {BADGE_DEFINITIONS.length} badges débloqués
           </p>
           {BADGE_DEFINITIONS.map((badge) => {
@@ -366,12 +366,12 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                    <h3 className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
                       {badge.title}
                     </h3>
                     {unlocked ? (
                       <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-black"
+                        className="rounded-full px-2 py-0.5 text-[11px] font-black"
                         style={{
                           backgroundColor: 'var(--duo-green-bg)',
                           color: 'var(--duo-green-text)',
@@ -393,7 +393,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                  <p className="mt-0.5 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
                     {unlocked ? badge.description : badge.conditionLabel}
                   </p>
                 </div>
@@ -413,14 +413,14 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           <div>
             <div className="mb-3 flex items-center justify-between">
               <h3
-                className="text-xs font-black uppercase tracking-wider"
+                className="text-[13px] font-black uppercase tracking-wider"
                 style={{ color: 'var(--text-muted)' }}
               >
                 Dernières chaînes
               </h3>
               {profile.savedBestChains.length > 0 && (
                 <span
-                  className="text-[11px] font-extrabold"
+                  className="text-xs font-extrabold"
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {profile.savedBestChains.length} enregistrée
@@ -431,10 +431,10 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
 
             {profile.savedBestChains.length === 0 ? (
               <div className="duo-card p-5 text-center">
-                <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
                   Aucune chaîne enregistrée
                 </p>
-                <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
                   Termine une partie en duo pour conserver votre parcours ici.
                 </p>
               </div>
@@ -454,7 +454,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
         <section className="mt-5 space-y-6">
           {shopNotice && (
             <div
-              className="animate-pop-in rounded-2xl p-3 text-center text-xs font-black"
+              className="animate-pop-in rounded-2xl p-3 text-center text-[13px] font-black"
               style={{ backgroundColor: 'var(--duo-blue-bg)', color: 'var(--duo-blue-text)' }}
             >
               {shopNotice}
@@ -464,7 +464,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           {/* Thèmes : aperçus miniatures du plateau */}
           <div>
             <h3
-              className="mb-3 text-xs font-black uppercase tracking-wider"
+              className="mb-3 text-[13px] font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
               Thèmes
@@ -520,7 +520,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                     </div>
 
                     <p
-                      className="mt-2.5 truncate px-0.5 text-[13px] font-black"
+                      className="mt-2.5 truncate px-0.5 text-sm font-black"
                       style={{ color: 'var(--text-primary)' }}
                     >
                       {item.name}
@@ -529,7 +529,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                     <div className="mt-2">
                       {active ? (
                         <span
-                          className="flex h-9 w-full items-center justify-center gap-1 rounded-xl text-xs font-black uppercase tracking-wide"
+                          className="flex h-9 w-full items-center justify-center gap-1 rounded-xl text-[13px] font-black uppercase tracking-wide"
                           style={{ color: 'var(--duo-green-text)' }}
                         >
                           <Check className="h-4 w-4 stroke-[3]" />
@@ -539,7 +539,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                         <button
                           type="button"
                           onClick={() => handleThemeAction(item.id, 0, item.name)}
-                          className="duo-btn duo-btn-white h-9 w-full text-xs uppercase tracking-wide"
+                          className="duo-btn duo-btn-white h-9 w-full text-[13px] uppercase tracking-wide"
                         >
                           Équiper
                         </button>
@@ -547,7 +547,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                         <button
                           type="button"
                           onClick={() => handleThemeAction(item.id, item.priceStars, item.name)}
-                          className="duo-btn duo-btn-gold flex h-9 w-full items-center justify-center gap-1 text-xs"
+                          className="duo-btn duo-btn-gold flex h-9 w-full items-center justify-center gap-1 text-[13px]"
                         >
                           <Star className="h-3.5 w-3.5 fill-current" />
                           {item.priceStars}
@@ -563,7 +563,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           {/* Effets de célébration */}
           <div>
             <h3
-              className="mb-3 text-xs font-black uppercase tracking-wider"
+              className="mb-3 text-[13px] font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
               Effets de victoire
@@ -598,13 +598,13 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                     </span>
                     <span className="min-w-0">
                       <span
-                        className="block truncate text-[13px] font-black"
+                        className="block truncate text-sm font-black"
                         style={{ color: 'var(--text-primary)' }}
                       >
                         {visual.label}
                       </span>
                       <span
-                        className="mt-0.5 flex items-center gap-1 text-[11px] font-extrabold"
+                        className="mt-0.5 flex items-center gap-1 text-xs font-extrabold"
                         style={{
                           color: active
                             ? 'var(--duo-green-text)'

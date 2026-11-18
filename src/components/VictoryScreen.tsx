@@ -1,17 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
-import {
-  ArrowRight,
-  Award,
-  Check,
-  Home,
-  RefreshCw,
-  Share2,
-  Sparkles,
-  Star,
-} from 'lucide-react';
+import { ArrowRight, Award, Star } from 'lucide-react';
 import { BADGE_DEFINITIONS, getLevelInfo } from '../engine/gamification';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
+import { WordTiles } from './WordTiles';
 import type { GameRoom, PlayerProfile } from '../types/game';
 
 interface VictoryScreenProps {
@@ -34,14 +26,16 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   onBackToHub,
 }) => {
   const [xpBarAnimated, setXpBarAnimated] = useState(false);
-  const [sharedStatus, setSharedStatus] = useState<'idle' | 'copied'>('idle');
-  const [showSharePreview, setShowSharePreview] = useState(false);
 
   const actualSteps = room.moves.length + room.undoPenaltyCount;
-  const starRating =
-    actualSteps <= room.optimalPar ? 3 : actualSteps <= room.optimalPar + 2 ? 2 : 1;
+  const isOptimal = actualSteps <= room.optimalPar;
+  const starRating = isOptimal ? 3 : actualSteps <= room.optimalPar + 2 ? 2 : 1;
 
-  const isHost = room.hostPlayer.playerId === profile.playerId;
+  const isHost =
+    room.hostPlayer.playerId === profile.playerId ||
+    (room.partnerPlayer.playerId !== profile.playerId &&
+      room.hostPlayer.name === profile.name &&
+      room.partnerPlayer.name !== profile.name);
   const partner = isHost ? room.partnerPlayer : room.hostPlayer;
   const levelInfo = getLevelInfo(profile.xp);
 
@@ -91,87 +85,34 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
     return BADGE_DEFINITIONS.filter((b) => newlyUnlockedBadgeIds.includes(b.id));
   }, [newlyUnlockedBadgeIds]);
 
-  // Build Wordle-style colored square chain representation
-  const wordleGridText = useMemo(() => {
-    const lines = [
-      `🔥 Let's Turn (${room.startWord} → ${room.targetWord})`,
-      `👥 ${profile.name} & ${partner.name} · ${actualSteps}/${room.optimalPar} coups (${'⭐'.repeat(
-        starRating
-      )})`,
-      '',
-    ];
-
-    const startSquares = room.startWord
-      .split('')
-      .map((c, idx) => (c === room.targetWord[idx] ? '🟩' : '⬜'))
-      .join('');
-    lines.push(`${startSquares} ${room.startWord}`);
-
-    room.moves.forEach((m) => {
-      const sq = m.word
-        .split('')
-        .map((c, idx) => {
-          if (c === room.targetWord[idx]) return '🟩';
-          if (idx === m.changedIndex) return '🟦';
-          return '⬜';
-        })
-        .join('');
-      lines.push(`${sq} ${m.word}`);
-    });
-    return lines.join('\n');
-  }, [room, profile.name, partner.name, actualSteps, starRating]);
-
-  const handleShareChain = async () => {
-    setShowSharePreview(true);
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Let's Turn : ${room.startWord} → ${room.targetWord}`,
-          text: wordleGridText,
-        });
-        return;
-      } catch {
-        // fallback to clipboard
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(wordleGridText);
-      setSharedStatus('copied');
-      window.setTimeout(() => setSharedStatus('idle'), 2500);
-    } catch {
-      setSharedStatus('copied');
-    }
-  };
+  const chainWords = useMemo(() => {
+    return [room.startWord, ...room.moves.map((m) => m.word)];
+  }, [room.startWord, room.moves]);
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-4 pb-6 pt-5">
+    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-4 pb-6 pt-6">
       <div>
         {/* Bannière Victoire */}
         <div className="animate-pop-in text-center">
-          <div className="mb-3 flex items-center justify-center -space-x-2.5">
+          <div className="mb-3.5 flex items-center justify-center -space-x-3">
             <FigmaAvatar
               avatarId={profile.avatarId}
-              size={52}
+              size={58}
               ringColor={profile.color}
               ringGapColor="var(--bg-app)"
             />
             <FigmaAvatar
               avatarId={partner.avatarId}
-              size={52}
+              size={58}
               ringColor={partner.color}
               ringGapColor="var(--bg-app)"
             />
           </div>
 
-          <div
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black"
-            style={{ backgroundColor: 'var(--duo-green-bg)', color: 'var(--duo-green-text)' }}
+          <h1
+            className="text-[26px] font-black leading-tight tracking-tight"
+            style={{ color: 'var(--text-primary)' }}
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            Mot cible atteint en {durationSec}s !
-          </div>
-
-          <h1 className="mt-2 text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
             {starRating === 3
               ? 'Parfait ! Score optimal !'
               : starRating === 2
@@ -179,12 +120,16 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               : 'Chaîne complétée !'}
           </h1>
 
+          <p className="mt-1 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
+            {room.startWord} → {room.targetWord} avec {partner.name} en {durationSec}s
+          </p>
+
           {/* 3 étoiles Duolingo */}
-          <div className="mt-3 flex items-center justify-center gap-2">
+          <div className="mt-3.5 flex items-center justify-center gap-2.5">
             {[1, 2, 3].map((n) => (
               <Star
                 key={n}
-                className={`h-9 w-9 transition-transform duration-500 ${
+                className={`h-10 w-10 transition-transform duration-500 ${
                   n <= starRating ? 'scale-110 drop-shadow-sm' : ''
                 }`}
                 style={{
@@ -196,91 +141,118 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           </div>
         </div>
 
-        {/* Résumé de la chaîne vs BFS optimal */}
+        {/* Carte Résumé + Transformation visuelle */}
         <div className="duo-card mt-5 p-4">
+          {/* Chiffres clés sur 3 colonnes */}
           <div
-            className="flex items-center justify-between border-b-2 pb-3 text-xs font-black"
+            className="grid grid-cols-3 gap-2 border-b pb-3.5 text-center"
             style={{ borderColor: 'var(--border-tile)' }}
           >
             <div>
-              <span className="block" style={{ color: 'var(--text-muted)' }}>
-                Chemin optimal (BFS)
-              </span>
-              <span className="text-base" style={{ color: 'var(--duo-blue-text)' }}>
-                {room.optimalPar} coups
-              </span>
-            </div>
-            <div className="text-right">
-              <span className="block" style={{ color: 'var(--text-muted)' }}>
-                Votre score
-              </span>
-              <span
-                className="text-base"
+              <p
+                className="text-[22px] font-black tabular-nums leading-none"
                 style={{
-                  color:
-                    actualSteps <= room.optimalPar
-                      ? 'var(--duo-green-text)'
-                      : 'var(--duo-orange)',
+                  color: isOptimal ? 'var(--duo-green-text)' : 'var(--duo-orange)',
                 }}
               >
-                {actualSteps} coups
-              </span>
+                {actualSteps}
+              </p>
+              <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                Coups
+              </p>
+            </div>
+            <div>
+              <p
+                className="text-[22px] font-black tabular-nums leading-none"
+                style={{ color: 'var(--duo-blue-text)' }}
+              >
+                {room.optimalPar}
+              </p>
+              <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                Par BFS
+              </p>
+            </div>
+            <div>
+              <p
+                className="text-[22px] font-black tabular-nums leading-none"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                {durationSec}s
+              </p>
+              <p className="mt-1 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                Temps
+              </p>
             </div>
           </div>
 
-          {/* Parcours visuel de transformation */}
-          <div className="mt-3">
-            <span
-              className="mb-2 block text-[11px] font-extrabold uppercase tracking-wider"
+          {/* Départ → Cible en tuiles 3D */}
+          <div className="mt-4 flex items-center justify-center gap-2.5">
+            <WordTiles word={room.startWord} target={room.targetWord} size="sm" />
+            <ArrowRight
+              className="h-4 w-4 shrink-0 stroke-[3]"
               style={{ color: 'var(--text-muted)' }}
-            >
-              Votre transformation
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span
-                className="rounded-xl border-2 px-2.5 py-1 text-xs font-black"
-                style={{
-                  borderColor: 'var(--border-tile)',
-                  backgroundColor: 'var(--bg-muted)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                {room.startWord}
-              </span>
-              {room.moves.map((m) => {
-                const isTarget = m.word === room.targetWord;
-                return (
-                  <React.Fragment key={m.id}>
-                    <ArrowRight className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
-                    <span
-                      className="rounded-xl border-2 px-2.5 py-1 text-xs font-black"
-                      style={{
-                        borderColor: isTarget ? 'var(--duo-green)' : 'var(--border-tile)',
-                        backgroundColor: isTarget ? 'var(--duo-green-bg)' : 'var(--bg-surface)',
-                        color: isTarget ? 'var(--duo-green-text)' : 'var(--text-primary)',
-                      }}
-                    >
-                      {m.word}
-                    </span>
-                  </React.Fragment>
-                );
-              })}
-            </div>
+            />
+            <WordTiles word={room.targetWord} variant="target" size="sm" />
+          </div>
+
+          {/* Parcours étape par étape avec la lettre modifiée mise en avant */}
+          <div
+            className="mt-4 flex flex-wrap items-center justify-center gap-1.5 border-t pt-3.5"
+            style={{ borderColor: 'var(--border-tile)' }}
+          >
+            {chainWords.map((word, idx) => {
+              const prev = idx > 0 ? chainWords[idx - 1] : null;
+              const isFinal = idx === chainWords.length - 1;
+              return (
+                <React.Fragment key={`${word}-${idx}`}>
+                  {idx > 0 && (
+                    <ArrowRight
+                      className="h-3.5 w-3.5 shrink-0 stroke-[2.5]"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                  )}
+                  <span
+                    className="inline-flex items-center rounded-lg border px-2.5 py-1 text-xs font-black tracking-wider"
+                    style={{
+                      backgroundColor: isFinal
+                        ? 'color-mix(in srgb, var(--duo-green) 14%, var(--bg-tile))'
+                        : 'var(--bg-muted)',
+                      borderColor: isFinal ? 'var(--duo-green)' : 'var(--border-tile)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {word.split('').map((ch, ci) => {
+                      const changed = prev !== null && prev[ci] !== ch;
+                      return (
+                        <span
+                          key={ci}
+                          style={{
+                            color: changed ? 'var(--duo-green-shadow)' : undefined,
+                          }}
+                        >
+                          {ch}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
 
         {/* Progression XP & Récompenses */}
         <div className="duo-card mt-3.5 p-4">
-          <div className="flex items-center justify-between text-xs font-black">
+          <div className="flex items-center justify-between gap-2 text-sm font-black">
             <span className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
-              <FigmaFlameIcon size={16} />+{earnedXp} XP · +{earnedStars} ⭐
+              <FigmaFlameIcon size={18} />+{earnedXp} XP · +{earnedStars} ⭐
             </span>
-            <span style={{ color: 'var(--duo-blue-text)' }}>
+            <span className="text-[13px]" style={{ color: 'var(--duo-blue-text)' }}>
               Niv. {levelInfo.level} · {levelInfo.title}
             </span>
           </div>
           <div
-            className="mt-2 h-3 w-full overflow-hidden rounded-full"
+            className="mt-2.5 h-3 w-full overflow-hidden rounded-full"
             style={{ backgroundColor: 'var(--bg-muted)' }}
           >
             <div
@@ -295,7 +267,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           </div>
         </div>
 
-        {/* Pop-up / Carte des Badges débloqués */}
+        {/* Carte des Badges débloqués */}
         {unlockedBadges.length > 0 && (
           <div
             className="duo-card animate-pop-in mt-3.5 p-4"
@@ -311,20 +283,20 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               <Award className="h-4 w-4" style={{ color: 'var(--duo-orange)' }} />
               Nouveau badge débloqué !
             </div>
-            <div className="mt-2 space-y-2">
+            <div className="mt-2.5 space-y-2.5">
               {unlockedBadges.map((badge) => (
                 <div key={badge.id} className="flex items-center gap-3">
                   <div
-                    className="flex h-10 w-10 items-center justify-center rounded-xl"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
                     style={{ backgroundColor: 'var(--bg-surface)' }}
                   >
-                    <FigmaBadgeIcon badgeId={badge.id} size={26} />
+                    <FigmaBadgeIcon badgeId={badge.id} size={28} />
                   </div>
-                  <div>
-                    <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
                       {badge.title}
                     </p>
-                    <p className="text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
                       {badge.description}
                     </p>
                   </div>
@@ -333,65 +305,25 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
             </div>
           </div>
         )}
-
-        {/* Aperçu carte de partage style Wordle */}
-        {showSharePreview && (
-          <div className="duo-card animate-pop-in mt-3.5 p-3.5">
-            <p className="mb-2 text-xs font-black" style={{ color: 'var(--duo-blue-text)' }}>
-              Carte prête pour WhatsApp / Instagram :
-            </p>
-            <pre
-              className="whitespace-pre-wrap rounded-xl p-3 font-sans text-xs font-bold leading-relaxed"
-              style={{
-                backgroundColor: 'var(--bg-muted)',
-                color: 'var(--text-primary)',
-              }}
-            >
-              {wordleGridText}
-            </pre>
-          </div>
-        )}
       </div>
 
-      {/* Actions de sortie (Rétention) */}
-      <div className="mt-6 space-y-2.5">
+      {/* Actions de sortie (sans icônes) */}
+      <div className="mt-6 space-y-3">
         <button
           type="button"
           onClick={() => onRematch(room.code)}
-          className="duo-btn duo-btn-green flex w-full items-center justify-center gap-2 py-4 text-base"
+          className="duo-btn duo-btn-green w-full py-4 text-base"
         >
-          <RefreshCw className="h-5 w-5" />
           Revanche immédiate
         </button>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            onClick={handleShareChain}
-            className="duo-btn duo-btn-blue flex items-center justify-center gap-1.5 py-3 text-xs"
-          >
-            {sharedStatus === 'copied' ? (
-              <>
-                <Check className="h-4 w-4" />
-                Copié !
-              </>
-            ) : (
-              <>
-                <Share2 className="h-4 w-4" />
-                Partager chaîne
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={onBackToHub}
-            className="duo-btn duo-btn-white flex items-center justify-center gap-1.5 py-3 text-xs"
-          >
-            <Home className="h-4 w-4" />
-            Accueil
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onBackToHub}
+          className="duo-btn duo-btn-white w-full py-3.5 text-[15px]"
+        >
+          Accueil
+        </button>
       </div>
     </div>
   );

@@ -79,6 +79,7 @@ export function App() {
   const partnerTimerRef = useRef<number | null>(null);
   const bootstrappedRef = useRef(false);
   const rewardedRoomsRef = useRef<Set<string>>(new Set());
+  const [authBootstrapped, setAuthBootstrapped] = useState(false);
 
   // Sync theme attribute to <html>
   useEffect(() => {
@@ -92,19 +93,23 @@ export function App() {
     bootstrappedRef.current = true;
 
     void (async () => {
-      const localProfile = loadProfile();
-      const localRooms = localProfile ? loadRooms(localProfile) : {};
-      const synced = await bootstrapSupabaseState(localProfile, localRooms);
-      if (synced.profile && (localProfile || !loadProfile())) {
-        setProfile(synced.profile);
-        setRooms(synced.rooms);
+      try {
+        const localProfile = loadProfile();
+        const localRooms = localProfile ? loadRooms(localProfile) : {};
+        const synced = await bootstrapSupabaseState(localProfile, localRooms);
+        if (synced.profile && (localProfile || !loadProfile())) {
+          setProfile(synced.profile);
+          setRooms(synced.rooms);
+        }
+      } finally {
+        setAuthBootstrapped(true);
       }
     })();
   }, []);
 
-  // If returning user arrived via /join/CODE, fetch/join the room immediately
+  // If returning user arrived via /join/CODE, wait until Supabase UID sync finishes then join
   useEffect(() => {
-    if (!profile || !pendingJoinCode) return;
+    if (!authBootstrapped || !profile || !pendingJoinCode) return;
     const codeToJoin = pendingJoinCode;
     setPendingJoinCode(null);
     if (window.location.pathname.startsWith('/join/')) {
@@ -121,7 +126,7 @@ export function App() {
       setActiveRoomCode(joined.code);
       setScreen(joined.status === 'completed' ? 'victory' : 'board');
     })();
-  }, [profile, pendingJoinCode]);
+  }, [authBootstrapped, profile, pendingJoinCode]);
 
   const completeRoomVictory = useCallback(
     (completedRoom: GameRoom) => {
@@ -245,16 +250,19 @@ export function App() {
             if (existing.autoPartnerEnabled && !updatedRoom.autoPartnerEnabled) {
               mergedRoom = { ...updatedRoom, turnStartedAt: Date.now() };
             } else if (
+              existing.currentTurnPlayerId !== updatedRoom.currentTurnPlayerId ||
+              updatedRoom.moves.length > existing.moves.length
+            ) {
+              // Anchor the new turn to this device's local clock to eliminate cross-device clock skew
+              mergedRoom = { ...updatedRoom, turnStartedAt: Date.now() };
+            } else if (
               existing.currentTurnPlayerId === updatedRoom.currentTurnPlayerId &&
               existing.currentWord === updatedRoom.currentWord &&
               existing.moves.length === updatedRoom.moves.length
             ) {
               mergedRoom = {
                 ...updatedRoom,
-                turnStartedAt: Math.max(
-                  existing.turnStartedAt ?? 0,
-                  updatedRoom.turnStartedAt ?? 0
-                ),
+                turnStartedAt: existing.turnStartedAt ?? updatedRoom.turnStartedAt ?? Date.now(),
                 lastTurnPass: updatedRoom.lastTurnPass ?? existing.lastTurnPass,
               };
             }
@@ -456,13 +464,19 @@ export function App() {
           if (room.autoPartnerEnabled && room.currentTurnPlayerId === profile.playerId) {
             continue;
           }
-          const updated = passTurnIfExpired(room, now);
+          // Waiting player handles primary expiry at 30s; active player yields after +1.5s fallback
+          const graceMs = room.currentTurnPlayerId === profile.playerId ? 1500 : 0;
+          const updated = passTurnIfExpired(room, now, graceMs);
           if (updated) {
             next[room.code] = updated;
             changed = true;
             broadcastRoomUpdate(updated, profile.playerId);
             void updateRemoteRoomState(updated);
-            if (updated.currentTurnPlayerId === profile.playerId && updated.lastTurnPass) {
+            if (
+              updated.currentTurnPlayerId === profile.playerId &&
+              updated.lastTurnPass &&
+              updated.lastTurnPass.fromPlayerId !== profile.playerId
+            ) {
               requestPushPermissionAndNotify(
                 `${updated.lastTurnPass.fromPlayerName} a trop tardé`,
                 `Le tour passe à toi (${updated.currentWord} → ${updated.targetWord}) !`

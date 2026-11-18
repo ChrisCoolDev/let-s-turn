@@ -32,7 +32,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   };
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-5 py-6">
+    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-4 py-6">
       <div>
         {/* En-tête de marque */}
         <div className="flex items-center justify-between">
@@ -80,7 +80,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               ? `Rejoins le salon ${pendingJoinCode}`
               : name.trim() || 'Crée ton profil'}
           </h1>
-          <p className="mt-0.5 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+          <p className="mt-1 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
             {AVATAR_LABELS[avatarId]} · Zéro inscription
           </p>
         </div>
@@ -90,7 +90,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
           <div>
             <label
               htmlFor="player-name"
-              className="mb-1.5 block text-[11px] font-black uppercase tracking-wider"
+              className="mb-1.5 block text-xs font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
               Prénom ou surnom
@@ -114,7 +114,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               autoFocus
             />
             {error && (
-              <p className="mt-1.5 text-xs font-extrabold" style={{ color: 'var(--duo-red)' }}>
+              <p className="mt-1.5 text-[13px] font-extrabold" style={{ color: 'var(--duo-red)' }}>
                 {error}
               </p>
             )}
@@ -123,7 +123,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
           {/* Galerie des 6 avatars */}
           <div>
             <span
-              className="mb-2 block text-[11px] font-black uppercase tracking-wider"
+              className="mb-2 block text-xs font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
               Avatar
@@ -165,7 +165,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
                       }
                     />
                     <span
-                      className="text-[11px] font-black"
+                      className="text-xs font-black"
                       style={{ color: selected ? 'var(--text-primary)' : 'var(--text-muted)' }}
                     >
                       {AVATAR_LABELS[id]}
@@ -179,7 +179,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
           {/* Couleur de joueur */}
           <div>
             <span
-              className="mb-2.5 block text-[11px] font-black uppercase tracking-wider"
+              className="mb-2.5 block text-xs font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
               Couleur

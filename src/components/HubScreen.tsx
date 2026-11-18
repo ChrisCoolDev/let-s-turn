@@ -73,13 +73,13 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
           <div className="min-w-0 leading-tight">
             <div className="flex items-center gap-1.5">
               <span
-                className="truncate text-[15px] font-black"
+                className="truncate text-base font-black"
                 style={{ color: 'var(--text-primary)' }}
               >
                 Défi du jour
               </span>
               <span
-                className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase"
+                className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-black uppercase"
                 style={{
                   backgroundColor: `color-mix(in srgb, ${accentColor} 15%, transparent)`,
                   color: accentShadow,
@@ -89,7 +89,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
               </span>
             </div>
             <p
-              className="mt-0.5 truncate text-[11px] font-bold"
+              className="mt-0.5 truncate text-[13px] font-bold"
               style={{ color: 'var(--text-muted)' }}
             >
               {isCompleted && dailyRoom
@@ -105,7 +105,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
 
         {isCompleted ? (
           <span
-            className="inline-flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-black uppercase tracking-wide"
+            className="inline-flex shrink-0 items-center gap-1 rounded-xl px-3 py-1.5 text-[13px] font-black uppercase tracking-wide"
             style={{
               backgroundColor: 'color-mix(in srgb, var(--duo-green) 16%, transparent)',
               color: 'var(--duo-green-shadow)',
@@ -116,7 +116,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
           </span>
         ) : (
           <span
-            className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white"
+            className="shrink-0 rounded-xl px-3.5 py-1.5 text-[13px] font-black uppercase tracking-wide text-white"
             style={{
               backgroundColor: 'var(--duo-orange)',
               boxShadow: '0 3px 0 var(--duo-orange-shadow)',
@@ -225,14 +225,14 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           <FigmaAvatar avatarId={profile.avatarId} size={46} ringColor={profile.color} onlineDot />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-base font-black" style={{ color: 'var(--text-primary)' }}>
+              <span className="truncate text-[17px] font-black" style={{ color: 'var(--text-primary)' }}>
                 {profile.name}
               </span>
-              <span className="rounded-full bg-[var(--duo-blue-bg)] px-2 py-0.5 text-[10px] font-black text-[var(--duo-blue-text)]">
+              <span className="rounded-full bg-[var(--duo-blue-bg)] px-2 py-0.5 text-[11px] font-black text-[var(--duo-blue-text)]">
                 Niv. {levelInfo.level}
               </span>
             </div>
-            <p className="truncate text-xs font-extrabold text-[var(--text-muted)]">
+            <p className="truncate text-[13px] font-extrabold text-[var(--text-muted)]">
               {levelInfo.title}
             </p>
           </div>
@@ -245,7 +245,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             title="Jours consécutifs joués en duo"
           >
             <FigmaFlameIcon size={18} />
-            <span className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+            <span className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
               {profile.streak}
             </span>
           </div>
@@ -256,7 +256,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             title="Étoiles & Boutique"
           >
             <Star className="h-4 w-4 fill-[#ffc800] text-[#e5a400]" />
-            <span className="text-sm font-black text-[var(--duo-gold-text)]">{profile.stars}</span>
+            <span className="text-[15px] font-black text-[var(--duo-gold-text)]">{profile.stars}</span>
           </button>
           <button
             type="button"
@@ -286,7 +286,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
 
       {/* Mini barre XP du niveau */}
       <div className="mt-3 px-1">
-        <div className="mb-1 flex items-center justify-between text-[11px] font-extrabold text-[var(--text-muted)]">
+        <div className="mb-1 flex items-center justify-between text-[13px] font-extrabold text-[var(--text-muted)]">
           <span>Progression XP</span>
           <span>
             {levelInfo.currentLevelXp} / {levelInfo.nextLevelXp} XP
@@ -322,20 +322,22 @@ export const HubScreen: React.FC<HubScreenProps> = ({
 
         {activeRooms.length === 0 ? (
           <div className="duo-card p-5 text-center">
-            <p className="text-sm font-extrabold" style={{ color: 'var(--text-primary)' }}>
+            <p className="text-[15px] font-extrabold" style={{ color: 'var(--text-primary)' }}>
               Aucune partie active pour le moment
             </p>
-            <p className="mt-1 text-xs font-bold text-[var(--text-muted)]">
+            <p className="mt-1 text-[13px] font-bold text-[var(--text-muted)]">
               Lance un nouveau défi pour transformer un mot avec ton partenaire !
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             {activeRooms.map((room) => {
-              const partner =
-                room.hostPlayer.playerId === profile.playerId
-                  ? room.partnerPlayer
-                  : room.hostPlayer;
+              const isHost =
+                room.hostPlayer.playerId === profile.playerId ||
+                (room.partnerPlayer.playerId !== profile.playerId &&
+                  room.hostPlayer.name === profile.name &&
+                  room.partnerPlayer.name !== profile.name);
+              const partner = isHost ? room.partnerPlayer : room.hostPlayer;
               const isMyTurn = room.currentTurnPlayerId === profile.playerId;
               const moves = room.moves.length + room.undoPenaltyCount;
               const overPar = moves > room.optimalPar;
@@ -359,18 +361,18 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                     <div className="flex min-w-0 items-center gap-3">
                       <FigmaAvatar
                         avatarId={partner.avatarId}
-                        size={36}
+                        size={38}
                         ringColor={partner.color}
                         onlineDot={partner.online}
                       />
                       <div className="min-w-0 leading-tight">
                         <p
-                          className="truncate text-[15px] font-black"
+                          className="truncate text-base font-black"
                           style={{ color: 'var(--text-primary)' }}
                         >
                           {partner.name}
                         </p>
-                        <p className="truncate text-[11px] font-bold text-[var(--text-muted)]">
+                        <p className="truncate text-[13px] font-bold text-[var(--text-muted)]">
                           {room.language === 'FR' ? 'Français' : 'Anglais'} · {room.wordLength}{' '}
                           lettres
                         </p>
@@ -379,7 +381,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
 
                     {isMyTurn ? (
                       <span
-                        className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white"
+                        className="shrink-0 rounded-xl px-3.5 py-1.5 text-[13px] font-black uppercase tracking-wide text-white"
                         style={{
                           backgroundColor: 'var(--duo-green)',
                           boxShadow: '0 3px 0 var(--duo-green-shadow)',
@@ -388,7 +390,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                         Jouer
                       </span>
                     ) : (
-                      <span className="flex shrink-0 items-center gap-1.5 text-xs font-extrabold tabular-nums text-[var(--text-muted)]">
+                      <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-extrabold tabular-nums text-[var(--text-muted)]">
                         {(() => {
                           if (room.autoPartnerEnabled) {
                             return (
@@ -413,7 +415,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                                     remainingSec <= 10 ? 'var(--duo-red)' : 'var(--duo-gold)',
                                 }}
                               />
-                              Son tour · {remainingSec}s
+                              {remainingSec <= 20 ? `Son tour · ${remainingSec}s` : 'Son tour'}
                             </>
                           );
                         })()}
@@ -441,7 +443,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                       />
                     </div>
                     <span
-                      className={`shrink-0 text-[11px] font-extrabold ${
+                      className={`shrink-0 text-[13px] font-extrabold ${
                         overPar ? 'text-[var(--duo-orange)]' : 'text-[var(--text-muted)]'
                       }`}
                     >
@@ -472,7 +474,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             setJoinError('');
             setShowJoinModal(true);
           }}
-          className="duo-btn duo-btn-white flex w-full items-center justify-center gap-2.5 py-3.5 text-sm"
+          className="duo-btn duo-btn-white flex w-full items-center justify-center gap-2.5 py-3.5 text-[15px]"
         >
           <Hash className="h-4 w-4 text-[var(--duo-blue)]" />
           Rejoindre avec un code
@@ -513,7 +515,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="mt-1 text-xs font-bold text-[var(--text-muted)]">
+            <p className="mt-1 text-sm font-bold text-[var(--text-muted)]">
               Entre le code envoyé par ton partenaire (ex : WINE-42 ou 4 caractères).
             </p>
 
@@ -531,7 +533,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                 autoFocus
               />
               {joinError && (
-                <p className="text-center text-xs font-extrabold text-[var(--duo-red-text)]">
+                <p className="text-center text-sm font-extrabold text-[var(--duo-red-text)]">
                   {joinError}
                 </p>
               )}
@@ -539,11 +541,11 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setJoinCode('WINE-42')}
-                  className="duo-btn duo-btn-white flex-1 py-3 text-xs"
+                  className="duo-btn duo-btn-white flex-1 py-3 text-[13px]"
                 >
                   Tester WINE-42
                 </button>
-                <button type="submit" className="duo-btn duo-btn-blue flex-1 py-3 text-xs">
+                <button type="submit" className="duo-btn duo-btn-blue flex-1 py-3 text-[13px]">
                   Rejoindre
                 </button>
               </div>

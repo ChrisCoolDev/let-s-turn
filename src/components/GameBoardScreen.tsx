@@ -74,14 +74,22 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   const toastTimerRef = useRef<number | null>(null);
   const seenTurnPassIdRef = useRef<string | null>(null);
 
-  const isHost = room.hostPlayer.playerId === profile.playerId;
+  const isHost =
+    room.hostPlayer.playerId === profile.playerId ||
+    (room.partnerPlayer.playerId !== profile.playerId &&
+      room.hostPlayer.name === profile.name &&
+      room.partnerPlayer.name !== profile.name);
   const partner = isHost ? room.partnerPlayer : room.hostPlayer;
   const isMyTurn = room.currentTurnPlayerId === profile.playerId;
   const canPlayManually = isMyTurn;
-  const hasTurnCountdown = room.status === 'active' && !room.autoPartnerEnabled;
+  const hasTurnCountdown =
+    room.status === 'active' &&
+    !room.autoPartnerEnabled &&
+    partner.playerId !== profile.playerId;
   const remainingSeconds = hasTurnCountdown
     ? Math.max(0, Math.ceil(((room.turnStartedAt ?? room.startedAt) + TURN_TIMEOUT_MS - now) / 1000))
     : 0;
+  const showPartnerCountdown = hasTurnCountdown && !isMyTurn && remainingSeconds <= 20;
   const isLowTime = hasTurnCountdown && remainingSeconds <= 10;
 
   const showToast = useCallback(
@@ -109,11 +117,19 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     if (Date.now() - pass.timestamp > 15_000) return;
 
     if (pass.toPlayerId === profile.playerId) {
-      showToast(`${pass.fromPlayerName} a trop tardé — c'est à ton tour !`, 'hint', 3400);
+      const otherName =
+        pass.fromPlayerId !== profile.playerId && pass.fromPlayerName !== profile.name
+          ? pass.fromPlayerName
+          : partner.name;
+      showToast(`${otherName} a trop tardé — à ton tour !`, 'hint', 3400);
     } else {
-      showToast(`Temps écoulé — le tour passe à ${pass.toPlayerName}`, 'info', 3400);
+      const nextName =
+        pass.toPlayerId !== profile.playerId && pass.toPlayerName !== profile.name
+          ? pass.toPlayerName
+          : partner.name;
+      showToast(`Temps écoulé — le tour passe à ${nextName}`, 'info', 3400);
     }
-  }, [room.lastTurnPass, profile.playerId, showToast]);
+  }, [room.lastTurnPass, profile.playerId, profile.name, partner.name, showToast]);
 
   // Reset local draft whenever the currentWord changes
   useEffect(() => {
@@ -432,7 +448,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   const rows = keyboardLayout === 'AZERTY' ? AZERTY_ROWS : QWERTY_ROWS;
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-3.5 pb-4 pt-3">
+    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col justify-between px-4 pb-5 pt-3.5">
       {/* TOP BAR épurée en 2 lignes : Retour + Barre de progression / Avatar + Flamme + Share */}
       <header className="space-y-3">
         {/* Ligne 1 : Bouton retour + barre de progression verte */}
@@ -461,55 +477,70 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           <div className="flex min-w-0 items-center gap-2.5">
             <FigmaAvatar
               avatarId={partner.avatarId}
-              size={38}
+              size={40}
               ringColor={partner.color}
               ringGapColor="var(--bg-app)"
               onlineDot={partner.online}
             />
             <div className="min-w-0 leading-tight">
-              <div className="flex items-center gap-1.5">
-                <p className="truncate text-sm font-black" style={{ color: 'var(--text-primary)' }}>
-                  {partner.name}
-                </p>
-                {hasTurnCountdown && (
-                  <span
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black tabular-nums"
-                    style={{
-                      backgroundColor: isLowTime
-                        ? 'var(--duo-red-bg)'
-                        : isMyTurn
-                        ? 'var(--duo-green-bg)'
-                        : 'var(--duo-gold-bg)',
-                      color: isLowTime
-                        ? 'var(--duo-red-text)'
-                        : isMyTurn
-                        ? 'var(--duo-green-text)'
-                        : 'var(--duo-gold-text)',
-                    }}
-                    title="Temps restant pour ce tour"
-                  >
-                    <Clock className="h-2.5 w-2.5 stroke-[2.75]" />
-                    {remainingSeconds}s
-                  </span>
-                )}
-              </div>
+              <p className="truncate text-base font-black" style={{ color: 'var(--text-primary)' }}>
+                {partner.name}
+              </p>
               {room.status === 'completed' ? (
                 <button
                   type="button"
                   onClick={() => onOpenVictory(room.code)}
-                  className="text-[11px] font-black text-[var(--duo-green-text)] hover:underline"
+                  className="text-[13px] font-black text-[var(--duo-green-text)] hover:underline"
                 >
                   🎉 Terminé ! Voir le résumé
                 </button>
               ) : isMyTurn ? (
-                <p className="truncate text-[11px] font-extrabold text-[var(--duo-green-text)]">
-                  C&apos;est ton tour ! · Coup {totalMovesUsed}/{room.optimalPar}
-                </p>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <p className="truncate text-[13px] font-extrabold text-[var(--duo-green-text)]">
+                    C&apos;est ton tour ! · Coup {totalMovesUsed}/{room.optimalPar}
+                  </p>
+                  {hasTurnCountdown && (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-black tabular-nums"
+                      style={{
+                        backgroundColor: isLowTime
+                          ? 'var(--duo-red-bg)'
+                          : 'var(--duo-green-bg)',
+                        color: isLowTime
+                          ? 'var(--duo-red-text)'
+                          : 'var(--duo-green-text)',
+                      }}
+                      title="Temps restant pour ton tour"
+                    >
+                      <Clock className="h-2.5 w-2.5 stroke-[2.75]" />
+                      {remainingSeconds}s
+                    </span>
+                  )}
+                </div>
               ) : (
-                <p className="truncate text-[11px] font-extrabold text-[var(--duo-gold-text)]">
-                  {partner.isTyping ? `${partner.name} tape...` : `Tour de ${partner.name}...`} · Coup{' '}
-                  {totalMovesUsed}/{room.optimalPar}
-                </p>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <p className="truncate text-[13px] font-extrabold text-[var(--duo-gold-text)]">
+                    {partner.isTyping ? `${partner.name} tape...` : `Tour de ${partner.name}...`} ·
+                    Coup {totalMovesUsed}/{room.optimalPar}
+                  </p>
+                  {showPartnerCountdown && (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-black tabular-nums"
+                      style={{
+                        backgroundColor: isLowTime
+                          ? 'var(--duo-red-bg)'
+                          : 'var(--duo-gold-bg)',
+                        color: isLowTime
+                          ? 'var(--duo-red-text)'
+                          : 'var(--duo-gold-text)',
+                      }}
+                      title="Passage auto du tour si inactif"
+                    >
+                      <Clock className="h-2.5 w-2.5 stroke-[2.75]" />
+                      {remainingSeconds}s
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -520,7 +551,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               title="Jours consécutifs joués en duo"
             >
               <FigmaFlameIcon size={18} />
-              <span className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+              <span className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
                 {profile.streak}
               </span>
             </div>
@@ -542,7 +573,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       <main className="my-2 flex flex-1 flex-col items-center justify-start pt-4">
         {/* Titre Figma node 1:34 : "Let’s turn WINE to SLIM" */}
         <h1
-          className="text-center text-[19px] font-extrabold tracking-tight"
+          className="text-center text-[21px] font-extrabold tracking-tight"
           style={{ color: 'var(--text-primary)' }}
         >
           Let&apos;s turn <span className="font-black">{room.startWord}</span> to{' '}
@@ -553,7 +584,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         <div className="mt-2 flex h-8 items-center justify-center">
           {toast ? (
             <div
-              className={`animate-pop-in rounded-full px-3.5 py-1 text-xs font-extrabold shadow-sm ${
+              className={`animate-pop-in rounded-full px-3.5 py-1 text-[13px] font-extrabold shadow-sm ${
                 toast.tone === 'error'
                   ? 'bg-[var(--duo-red-bg)] text-[var(--duo-red-text)]'
                   : toast.tone === 'hint'
@@ -564,9 +595,9 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               {toast.text}
             </div>
           ) : (
-            <p className="text-xs font-bold text-[var(--text-muted)]">
+            <p className="text-[13px] font-bold text-[var(--text-muted)]">
               {!isMyTurn && room.status === 'active'
-                ? hasTurnCountdown
+                ? showPartnerCountdown
                   ? `En attente de ${partner.name} — tour auto dans ${remainingSeconds}s`
                   : `En attente du coup de ${partner.name} — clavier verrouillé`
                 : selectedIndex === null
@@ -628,7 +659,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
         {/* Rappel de l'indice lettre cible si révélé */}
         {hintChar && hintIndex !== null && (
-          <p className="mt-2 text-xs font-black text-[var(--duo-gold-text)]">
+          <p className="mt-2.5 text-[13px] font-black text-[var(--duo-gold-text)]">
             💡 Lettre suggérée pour la tuile {hintIndex + 1} :{' '}
             <span className="rounded bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-[var(--duo-gold-text)]">
               {hintChar}
@@ -657,7 +688,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--duo-red)]" />
             )}
             <div className="min-w-0 flex-1 leading-snug">
-              <p className="text-xs font-black">
+              <p className="text-sm font-black">
                 {alreadyPlayedStep !== null
                   ? `${draftWord} déjà joué (${
                       alreadyPlayedStep === 0 ? 'mot de départ' : `étape ${alreadyPlayedStep}`
@@ -666,7 +697,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   ? `✓ ${draftWord} a du sens !`
                   : `✗ "${draftWord}" n'a pas de sens`}
               </p>
-              <p className="mt-0.5 truncate text-[11px] font-bold opacity-90">
+              <p className="mt-0.5 truncate text-[13px] font-bold opacity-90">
                 {alreadyPlayedStep !== null
                   ? 'Choisis une autre lettre pour avancer sans tourner en rond.'
                   : draftMeaning.valid
@@ -680,7 +711,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         {/* Journal Conversationnel Figma Frame 2 (node 2:16) */}
         <div className="mt-5 w-full max-w-[360px] space-y-2 text-center">
           {recentMoves.length === 0 ? (
-            <p className="text-[15px] font-bold text-[var(--text-muted)]">
+            <p className="text-base font-bold text-[var(--text-muted)]">
               Mot de départ : <span className="text-[var(--text-primary)]">{room.startWord}</span> — À vous de
               jouer le premier coup !
             </p>
@@ -688,7 +719,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             recentMoves.map((move, i) => (
               <p
                 key={move.id}
-                className={`text-[15px] font-bold leading-snug ${
+                className={`text-base font-bold leading-snug ${
                   i === 0 ? 'opacity-100' : 'opacity-70'
                 }`}
                 style={{ color: 'var(--text-muted)' }}
@@ -700,8 +731,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
           {/* Sens du mot actuellement posé sur le plateau */}
           {!hasDraftChange && currentWordMeaning?.valid && currentWordMeaning.definition && (
-            <div className="mx-auto mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border-tile)] bg-[var(--bg-muted)] px-3 py-1 text-[11px] font-extrabold text-[var(--text-muted)]">
-              <BookOpen className="h-3 w-3 shrink-0 text-[var(--duo-blue)]" />
+            <div className="mx-auto mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border-tile)] bg-[var(--bg-muted)] px-3 py-1 text-[13px] font-extrabold text-[var(--text-muted)]">
+              <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--duo-blue)]" />
               <span className="truncate">
                 <strong className="text-[var(--text-primary)]">{room.currentWord}</strong> :{' '}
                 {currentWordMeaning.definition}
@@ -716,7 +747,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             <button
               type="button"
               onClick={() => setShowFullChain((v) => !v)}
-              className="mx-auto flex items-center gap-1.5 rounded-full border border-[var(--border-tile)] px-3 py-1 text-xs font-extrabold text-[var(--text-muted)] hover:bg-black/5"
+              className="mx-auto flex items-center gap-1.5 rounded-full border border-[var(--border-tile)] px-3.5 py-1.5 text-[13px] font-extrabold text-[var(--text-muted)] hover:bg-black/5"
             >
               <History className="h-3.5 w-3.5 text-[var(--duo-blue)]" />
               Chaîne complète ({room.moves.length + 1} mots)
@@ -728,8 +759,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             </button>
 
             {showFullChain && (
-              <div className="duo-card mt-2 max-h-40 space-y-2 overflow-y-auto p-3">
-                <div className="flex items-center justify-between text-xs font-extrabold">
+              <div className="duo-card mt-2 max-h-40 space-y-2 overflow-y-auto p-3.5">
+                <div className="flex items-center justify-between text-[13px] font-extrabold">
                   <span className="rounded-lg bg-[var(--bg-muted)] px-2 py-0.5 text-[var(--text-muted)]">
                     Départ
                   </span>
@@ -740,7 +771,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                 {room.moves.map((move, stepIdx) => (
                   <div
                     key={move.id}
-                    className="flex items-center justify-between border-t border-[var(--border-tile)] pt-1.5 text-xs font-extrabold"
+                    className="flex items-center justify-between border-t border-[var(--border-tile)] pt-1.5 text-[13px] font-extrabold"
                   >
                     <span className="flex items-center gap-1.5">
                       <span
@@ -782,15 +813,15 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               type="button"
               onClick={handleHintClick}
               disabled={!canPlayManually || room.status === 'completed'}
-              className={`duo-btn flex items-center gap-1.5 px-3 py-2 text-xs ${
+              className={`duo-btn flex items-center gap-1.5 px-3 py-2 text-[13px] ${
                 !canPlayManually || room.status === 'completed'
                   ? 'duo-btn-disabled'
                   : 'duo-btn-white'
               }`}
             >
-              <Lightbulb className="h-3.5 w-3.5 text-[#ffc800]" />
+              <Lightbulb className="h-4 w-4 text-[#ffc800]" />
               Indice
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-[10px] font-black text-[var(--duo-gold-text)]">
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-[11px] font-black text-[var(--duo-gold-text)]">
                 1 <Star className="h-2.5 w-2.5 fill-[#ffc800] text-[#e5a400]" />
               </span>
             </button>
@@ -799,14 +830,14 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               type="button"
               onClick={() => onUndoMove(room.code)}
               disabled={room.moves.length === 0 || room.status === 'completed'}
-              className={`duo-btn flex items-center gap-1 px-2.5 py-2 text-xs ${
+              className={`duo-btn flex items-center gap-1.5 px-3 py-2 text-[13px] ${
                 room.moves.length === 0 || room.status === 'completed'
                   ? 'duo-btn-disabled'
                   : 'duo-btn-white'
               }`}
               title="Reculer d'un coup (+1 pénalité)"
             >
-              <RotateCcw className="h-3.5 w-3.5 text-[var(--duo-orange)]" />
+              <RotateCcw className="h-4 w-4 text-[var(--duo-orange)]" />
               Undo
             </button>
           </div>
@@ -814,7 +845,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           <button
             type="button"
             onClick={() => setKeyboardLayout((l) => (l === 'AZERTY' ? 'QWERTY' : 'AZERTY'))}
-            className="rounded-xl border-2 border-[var(--border-tile)] px-2.5 py-1.5 text-[11px] font-black text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="rounded-xl border-2 border-[var(--border-tile)] px-3 py-1.5 text-xs font-black text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
             {keyboardLayout}
           </button>
@@ -842,7 +873,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                     type="button"
                     disabled={!canPlayManually || room.status === 'completed'}
                     onClick={() => handleKeyPress(key)}
-                    className={`duo-key flex h-11 flex-1 items-center justify-center text-sm font-black ${
+                    className={`duo-key flex h-11 flex-1 items-center justify-center text-[15px] font-black ${
                       isActiveChar
                         ? '!border-[var(--duo-blue-shadow)] !bg-[var(--duo-blue)] !text-white'
                         : matchesTargetAtSelected

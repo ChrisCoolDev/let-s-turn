@@ -63,11 +63,11 @@ const OptionTile: React.FC<OptionTileProps> = ({
       {badge}
     </span>
     <div className="min-w-0 leading-tight">
-      <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+      <p className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
         {title}
       </p>
       {subtitle && (
-        <p className="truncate text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+        <p className="truncate text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
           {subtitle}
         </p>
       )}
@@ -77,7 +77,7 @@ const OptionTile: React.FC<OptionTileProps> = ({
 
 const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span
-    className="mb-2 block text-[11px] font-black uppercase tracking-wider"
+    className="mb-2 block text-xs font-black uppercase tracking-wider"
     style={{ color: 'var(--text-muted)' }}
   >
     {children}
@@ -165,7 +165,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-duel-title"
-        className="animate-sheet-up max-h-[90dvh] w-full max-w-[430px] overflow-y-auto rounded-t-3xl border-t-2 p-5 pb-7 shadow-2xl sm:rounded-3xl sm:border-2"
+        className="animate-sheet-up max-h-[90dvh] w-full max-w-[430px] overflow-y-auto rounded-t-3xl border-t-2 px-4 pb-7 pt-5 shadow-2xl sm:rounded-3xl sm:border-2 sm:p-5"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-tile)',
@@ -224,7 +224,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                 />
               </div>
               <p
-                className="mt-2.5 text-center text-[11px] font-extrabold"
+                className="mt-2.5 text-center text-[13px] font-extrabold"
                 style={{ color: 'var(--text-muted)' }}
               >
                 {isDaily
@@ -318,7 +318,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                 backgroundColor: 'color-mix(in srgb, var(--duo-green) 7%, var(--bg-surface))',
               }}
             >
-              <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider">
+              <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider">
                 <span style={{ color: 'var(--text-muted)' }}>
                   {createdRoom.mode === 'daily'
                     ? `Défi du jour · ${createdRoom.wordLength} lettres`
