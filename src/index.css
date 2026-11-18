@@ -1,0 +1,344 @@
+@import "tailwindcss";
+
+:root {
+  --bg-app: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-muted: #f7f7f7;
+  --bg-tile: #fffdfe;
+  --border-tile: #e7e4e7;
+  --text-primary: #4b484b;
+  --text-tile: #4d4b4c;
+  --text-muted: #9b9b9b;
+  --duo-green: #58cc02;
+  --duo-green-bright: #5ecb08;
+  --duo-green-shadow: #46a302;
+  --duo-blue: #1cb0f6;
+  --duo-blue-shadow: #1899d6;
+  --duo-blue-bg: #ddf4ff;
+  --duo-orange: #ff9600;
+  --duo-orange-shadow: #cc7800;
+  --duo-red: #ff4b4b;
+  --duo-red-shadow: #d33131;
+  --duo-red-bg: #ffdfe0;
+  --duo-purple: #ce82ff;
+  --duo-purple-shadow: #a568cc;
+  --duo-gold: #ffc800;
+  --duo-gold-shadow: #e5a400;
+  --key-bg: #ffffff;
+  --key-border: #e5e5e5;
+  --key-text: #4b484b;
+  --font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+:root,
+[data-theme] {
+  --duo-green-bg: color-mix(in srgb, var(--duo-green) 14%, var(--bg-surface));
+  --duo-green-text: var(--duo-green-shadow);
+  --duo-blue-bg: color-mix(in srgb, var(--duo-blue) 14%, var(--bg-surface));
+  --duo-blue-text: var(--duo-blue-shadow);
+  --duo-orange-bg: color-mix(in srgb, var(--duo-orange) 15%, var(--bg-surface));
+  --duo-gold-bg: color-mix(in srgb, var(--duo-gold) 18%, var(--bg-surface));
+  --duo-gold-text: #996300;
+  --duo-red-bg: color-mix(in srgb, var(--duo-red) 14%, var(--bg-surface));
+  --duo-red-text: var(--duo-red-shadow);
+}
+
+/* Cosmétique : Thème Néon Cyberpunk */
+[data-theme='cyberpunk'] {
+  --bg-app: #0d0f1a;
+  --bg-surface: #15192b;
+  --bg-muted: #1e233d;
+  --bg-tile: #191e36;
+  --border-tile: #363e6b;
+  --text-primary: #f1f5f9;
+  --text-tile: #00f5d4;
+  --text-muted: #94a3b8;
+  --duo-green: #00f5d4;
+  --duo-green-bright: #00f5d4;
+  --duo-green-shadow: #00b89c;
+  --duo-green-text: #00f5d4;
+  --duo-blue: #ff2a85;
+  --duo-blue-shadow: #c81965;
+  --duo-blue-bg: #2e1532;
+  --duo-blue-text: #ff7ab6;
+  --duo-gold-text: #ffd644;
+  --duo-red-text: #ff7b7b;
+  --key-bg: #1c2240;
+  --key-border: #363e6b;
+  --key-text: #f8fafc;
+}
+
+/* Cosmétique : Papier Journal NYT */
+[data-theme='nyt'] {
+  --bg-app: #f7f4ec;
+  --bg-surface: #fdfbf5;
+  --bg-muted: #ece6d8;
+  --bg-tile: #fffef9;
+  --border-tile: #cfc6b4;
+  --text-primary: #1a1917;
+  --text-tile: #1a1917;
+  --text-muted: #787166;
+  --duo-green: #2d7a47;
+  --duo-green-bright: #379256;
+  --duo-green-shadow: #1f5933;
+  --duo-blue: #326891;
+  --duo-blue-shadow: #234c6b;
+  --key-bg: #fffef9;
+  --key-border: #cfc6b4;
+  --key-text: #1a1917;
+}
+
+/* Cosmétique : Pastel Rose */
+[data-theme='pastel'] {
+  --bg-app: #fff6f9;
+  --bg-surface: #ffffff;
+  --bg-muted: #ffeaf2;
+  --bg-tile: #ffffff;
+  --border-tile: #f9cde0;
+  --text-primary: #63344d;
+  --text-tile: #63344d;
+  --text-muted: #a67890;
+  --duo-green: #ff6aa2;
+  --duo-green-bright: #ff5b98;
+  --duo-green-shadow: #d9467e;
+  --duo-blue: #9f7aea;
+  --duo-blue-shadow: #7c52cc;
+  --duo-blue-bg: #f3ebff;
+  --key-bg: #ffffff;
+  --key-border: #f9cde0;
+  --key-text: #63344d;
+}
+
+/* Cosmétique : Mode Sombre OLED */
+[data-theme='oled'] {
+  --bg-app: #000000;
+  --bg-surface: #121214;
+  --bg-muted: #1c1c20;
+  --bg-tile: #18181b;
+  --border-tile: #333338;
+  --text-primary: #f4f4f5;
+  --text-tile: #ffffff;
+  --text-muted: #8e8e93;
+  --duo-green-text: #6ee732;
+  --duo-blue-text: #5ac8fa;
+  --duo-gold-text: #ffd644;
+  --duo-red-text: #ff7b7b;
+  --key-bg: #1e1e22;
+  --key-border: #3a3a40;
+  --key-text: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-family);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  overscroll-behavior-y: contain;
+}
+
+/* Tuile Duolingo exacte issue du Figma (border-b-7, rounded-[10px], #fffdfe, #e7e4e7) */
+.duo-tile {
+  background-color: var(--bg-tile);
+  border: 2px solid var(--border-tile);
+  border-bottom-width: 7px;
+  border-radius: 10px;
+  color: var(--text-tile);
+  font-weight: 600;
+  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.duo-tile:active {
+  transform: translateY(2px);
+  border-bottom-width: 5px;
+}
+
+.duo-tile-selected {
+  background-color: var(--duo-blue-bg);
+  border-color: var(--duo-blue);
+  border-bottom-width: 7px;
+  color: var(--duo-blue-shadow);
+  transform: translateY(-2px);
+}
+
+.duo-tile-error {
+  background-color: var(--duo-red-bg);
+  border-color: var(--duo-red);
+  color: var(--duo-red-shadow);
+}
+
+.duo-tile-hint {
+  background-color: var(--duo-gold-bg);
+  border-color: var(--duo-gold);
+  color: var(--duo-gold-text);
+  animation: pulseHint 1.2s infinite ease-in-out;
+}
+
+/* Boutons tactiles 3D Duolingo */
+.duo-btn {
+  position: relative;
+  border-radius: 14px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  transition: transform 0.08s ease, border-bottom-width 0.08s ease, filter 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.duo-btn:active:not(:disabled) {
+  transform: translateY(3px);
+}
+
+.duo-btn-green {
+  background-color: var(--duo-green);
+  color: #ffffff;
+  border: 2px solid var(--duo-green-shadow);
+  border-bottom-width: 6px;
+}
+
+.duo-btn-green:active:not(:disabled) {
+  border-bottom-width: 3px;
+}
+
+.duo-btn-blue {
+  background-color: var(--duo-blue);
+  color: #ffffff;
+  border: 2px solid var(--duo-blue-shadow);
+  border-bottom-width: 6px;
+}
+
+.duo-btn-blue:active:not(:disabled) {
+  border-bottom-width: 3px;
+}
+
+.duo-btn-white {
+  background-color: var(--bg-tile);
+  color: var(--text-primary);
+  border: 2px solid var(--border-tile);
+  border-bottom-width: 6px;
+}
+
+.duo-btn-white:active:not(:disabled) {
+  border-bottom-width: 3px;
+}
+
+.duo-btn-gold {
+  background-color: var(--duo-gold);
+  color: #5c3d00;
+  border: 2px solid var(--duo-gold-shadow);
+  border-bottom-width: 6px;
+}
+
+.duo-btn-disabled {
+  background-color: var(--bg-muted);
+  color: var(--text-muted);
+  border: 2px solid var(--border-tile);
+  border-bottom-width: 5px;
+  cursor: not-allowed;
+}
+
+.duo-card {
+  background-color: var(--bg-surface);
+  border: 2px solid var(--border-tile);
+  border-bottom-width: 5px;
+  border-radius: 16px;
+}
+
+.duo-key {
+  background-color: var(--key-bg);
+  color: var(--key-text);
+  border: 2px solid var(--key-border);
+  border-bottom-width: 4px;
+  border-radius: 10px;
+  font-weight: 800;
+  transition: transform 0.06s ease, background-color 0.1s ease;
+}
+
+.duo-key:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-8px); }
+  30% { transform: translateX(7px); }
+  45% { transform: translateX(-6px); }
+  60% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+}
+
+.animate-shake {
+  animation: shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes flipTile {
+  0% { transform: rotateX(0deg) scale(1); }
+  45% { transform: rotateX(85deg) scale(1.06); }
+  100% { transform: rotateX(0deg) scale(1); }
+}
+
+.animate-flip-tile {
+  animation: flipTile 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.85); opacity: 0; }
+  70% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pop-in {
+  animation: popIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Bottom sheet : glissement depuis le bas + fondu du voile */
+@keyframes sheetUp {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.animate-sheet-up {
+  animation: sheetUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-up,
+  .animate-fade-in,
+  .animate-pop-in {
+    animation: none;
+  }
+}
+
+@keyframes pulseHint {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 200, 0, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 200, 0, 0); }
+}
+
+@keyframes pulseGreenDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.7; }
+}
+
+.animate-pulse-green {
+  animation: pulseGreenDot 1.6s infinite ease-in-out;
+}
