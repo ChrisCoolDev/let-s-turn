@@ -12,6 +12,7 @@ import {
   hydrateLocalProfileFromRemote,
   loadRemoteRooms,
   pushRemoteMove,
+  type RoomUpdateMeta,
   STARTER_ROOM_CODE,
   subscribeSupabaseSync,
   updateRemoteRoomState,
@@ -159,6 +160,7 @@ export {
   createOrUpsertRemoteRoom,
   ensureSupabaseSession,
   pushRemoteMove,
+  type RoomUpdateMeta,
   updateRemoteRoomState,
 };
 
@@ -518,7 +520,7 @@ export function pickSmartPartnerMove(room: GameRoom, partner: PlayerPresence): W
 
 // BroadcastChannel + localStorage + Supabase Realtime sync
 type SyncEvent =
-  | { type: 'ROOM_UPDATED'; room: GameRoom; senderId: string }
+  | { type: 'ROOM_UPDATED'; room: GameRoom; senderId: string; rematchFromCode?: string }
   | { type: 'TYPING_STATE'; roomCode: string; playerId: string; isTyping: boolean };
 
 let channel: BroadcastChannel | null = null;
@@ -530,13 +532,22 @@ function getChannel(): BroadcastChannel | null {
   return channel;
 }
 
-export function broadcastRoomUpdate(room: GameRoom, senderId = ''): void {
+export function broadcastRoomUpdate(
+  room: GameRoom,
+  senderId = '',
+  rematchFromCode?: string
+): void {
   try {
-    getChannel()?.postMessage({ type: 'ROOM_UPDATED', room, senderId } satisfies SyncEvent);
+    getChannel()?.postMessage({
+      type: 'ROOM_UPDATED',
+      room,
+      senderId,
+      ...(rematchFromCode ? { rematchFromCode } : {}),
+    } satisfies SyncEvent);
   } catch {
     // Ignore channel errors
   }
-  broadcastSupabaseRoomUpdate(room, senderId);
+  broadcastSupabaseRoomUpdate(room, senderId, rematchFromCode);
 }
 
 export function broadcastTypingState(
@@ -559,7 +570,7 @@ export function broadcastTypingState(
 
 export function subscribeRealtimeSync(
   playerId: string,
-  onRoomUpdate: (room: GameRoom) => void,
+  onRoomUpdate: (room: GameRoom, meta?: RoomUpdateMeta) => void,
   onTypingChange?: (roomCode: string, playerId: string, isTyping: boolean) => void
 ): () => void {
   const ch = getChannel();
@@ -567,7 +578,10 @@ export function subscribeRealtimeSync(
     const data = ev.data;
     if (!data) return;
     if (data.type === 'ROOM_UPDATED') {
-      onRoomUpdate(data.room);
+      onRoomUpdate(
+        data.room,
+        data.rematchFromCode ? { rematchFromCode: data.rematchFromCode } : undefined
+      );
     } else if (data.type === 'TYPING_STATE' && onTypingChange) {
       onTypingChange(data.roomCode, data.playerId, data.isTyping);
     }
@@ -578,7 +592,7 @@ export function subscribeRealtimeSync(
     if (ev.key === ROOMS_KEY && ev.newValue) {
       try {
         const rooms = JSON.parse(ev.newValue) as Record<string, GameRoom>;
-        Object.values(rooms).forEach(onRoomUpdate);
+        Object.values(rooms).forEach((room) => onRoomUpdate(room));
       } catch {
         // Ignore parse error
       }

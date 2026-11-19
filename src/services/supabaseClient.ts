@@ -15,6 +15,11 @@ import type {
 export const CAROLE_PARTNER_ID = 'partner-carole-fixed';
 export const STARTER_ROOM_CODE = 'WINE-42';
 
+export interface RoomUpdateMeta {
+  rematchFromCode?: string;
+  isInsert?: boolean;
+}
+
 interface DbProfileRow {
   id: string;
   name: string;
@@ -67,6 +72,7 @@ interface DbMoveRow {
 let cachedClient: SupabaseClient | null | undefined;
 let authInFlight: Promise<string | null> | null = null;
 const profileCache = new Map<string, DbProfileRow>();
+const pendingRoomCreates = new Map<string, Promise<boolean>>();
 
 export function isValidUuid(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -439,43 +445,54 @@ export async function createOrUpsertRemoteRoom(room: GameRoom): Promise<boolean>
   const client = getSupabaseClient();
   if (!client) return false;
 
-  const uid = await ensureSupabaseSession();
-  if (!uid || !isValidUuid(room.hostPlayer.playerId) || room.hostPlayer.playerId !== uid) {
-    return false;
+  const p = (async () => {
+    const uid = await ensureSupabaseSession();
+    if (!uid || !isValidUuid(room.hostPlayer.playerId) || room.hostPlayer.playerId !== uid) {
+      return false;
+    }
+
+    const partnerId = isValidUuid(room.partnerPlayer.playerId) ? room.partnerPlayer.playerId : null;
+    const dbTurnId = isValidUuid(room.currentTurnPlayerId) ? room.currentTurnPlayerId : uid;
+
+    const { error } = await client.from('rooms').upsert(
+      {
+        code: room.code,
+        language: room.language,
+        word_length: room.wordLength,
+        mode: room.mode,
+        start_word: room.startWord,
+        target_word: room.targetWord,
+        current_word: room.currentWord,
+        optimal_par: room.optimalPar,
+        optimal_path: room.optimalPath,
+        host_player_id: room.hostPlayer.playerId,
+        partner_player_id: partnerId,
+        current_turn_player_id: dbTurnId,
+        undo_penalty_count: room.undoPenaltyCount,
+        hints_used: room.hintsUsed,
+        status: room.status,
+        winner_player_id: isValidUuid(room.winnerPlayerId) ? room.winnerPlayerId : null,
+        started_at: new Date(room.startedAt).toISOString(),
+        completed_at: room.completedAt ? new Date(room.completedAt).toISOString() : null,
+      },
+      { onConflict: 'code' }
+    );
+
+    if (error) {
+      console.warn('[Supabase] Failed to save room:', error.message);
+      return false;
+    }
+    return true;
+  })();
+
+  pendingRoomCreates.set(room.code, p);
+  try {
+    return await p;
+  } finally {
+    if (pendingRoomCreates.get(room.code) === p) {
+      pendingRoomCreates.delete(room.code);
+    }
   }
-
-  const partnerId = isValidUuid(room.partnerPlayer.playerId) ? room.partnerPlayer.playerId : null;
-  const dbTurnId = isValidUuid(room.currentTurnPlayerId) ? room.currentTurnPlayerId : uid;
-
-  const { error } = await client.from('rooms').upsert(
-    {
-      code: room.code,
-      language: room.language,
-      word_length: room.wordLength,
-      mode: room.mode,
-      start_word: room.startWord,
-      target_word: room.targetWord,
-      current_word: room.currentWord,
-      optimal_par: room.optimalPar,
-      optimal_path: room.optimalPath,
-      host_player_id: room.hostPlayer.playerId,
-      partner_player_id: partnerId,
-      current_turn_player_id: dbTurnId,
-      undo_penalty_count: room.undoPenaltyCount,
-      hints_used: room.hintsUsed,
-      status: room.status,
-      winner_player_id: isValidUuid(room.winnerPlayerId) ? room.winnerPlayerId : null,
-      started_at: new Date(room.startedAt).toISOString(),
-      completed_at: room.completedAt ? new Date(room.completedAt).toISOString() : null,
-    },
-    { onConflict: 'code' }
-  );
-
-  if (error) {
-    console.warn('[Supabase] Failed to save room:', error.message);
-    return false;
-  }
-  return true;
 }
 
 export async function claimRemoteRoomByCode(
@@ -532,6 +549,9 @@ export async function claimRemoteRoomByCode(
 
 export async function updateRemoteRoomState(room: GameRoom): Promise<void> {
   if (room.code === STARTER_ROOM_CODE) return;
+  const pendingCreate = pendingRoomCreates.get(room.code);
+  if (pendingCreate) await pendingCreate;
+
   const client = getSupabaseClient();
   if (!client) return;
 
@@ -548,6 +568,10 @@ export async function updateRemoteRoomState(room: GameRoom): Promise<void> {
   const { error } = await client
     .from('rooms')
     .update({
+      start_word: room.startWord,
+      target_word: room.targetWord,
+      optimal_par: room.optimalPar,
+      optimal_path: room.optimalPath,
       current_word: room.currentWord,
       partner_player_id: partnerId,
       current_turn_player_id: dbTurnId,
@@ -567,6 +591,9 @@ export async function updateRemoteRoomState(room: GameRoom): Promise<void> {
 
 export async function pushRemoteMove(room: GameRoom, move: WordMove): Promise<void> {
   if (room.code === STARTER_ROOM_CODE) return;
+  const pendingCreate = pendingRoomCreates.get(room.code);
+  if (pendingCreate) await pendingCreate;
+
   const client = getSupabaseClient();
   if (!client) return;
 
@@ -600,7 +627,7 @@ export async function pushRemoteMove(room: GameRoom, move: WordMove): Promise<vo
 
 // Shared Realtime channel for instant Broadcast + Postgres Changes
 let realtimeChannel: RealtimeChannel | null = null;
-const roomListeners = new Set<(room: GameRoom) => void>();
+const roomListeners = new Set<(room: GameRoom, meta?: RoomUpdateMeta) => void>();
 const typingListeners = new Set<(roomCode: string, playerId: string, isTyping: boolean) => void>();
 let boundPlayerId: string | null = null;
 
@@ -621,11 +648,16 @@ function ensureRealtimeSubscription(playerId: string): void {
       config: { broadcast: { self: false } },
     })
     .on('broadcast', { event: 'room_update' }, ({ payload }) => {
-      const data = payload as { room?: GameRoom; senderId?: string } | undefined;
+      const data = payload as
+        | { room?: GameRoom; senderId?: string; rematchFromCode?: string }
+        | undefined;
       if (!data?.room) return;
       const r = data.room;
       if (r.hostPlayer.playerId !== playerId && r.partnerPlayer.playerId !== playerId) return;
-      roomListeners.forEach((cb) => cb(r));
+      const meta: RoomUpdateMeta | undefined = data.rematchFromCode
+        ? { rematchFromCode: data.rematchFromCode }
+        : undefined;
+      roomListeners.forEach((cb) => cb(r, meta));
     })
     .on('broadcast', { event: 'typing_state' }, ({ payload }) => {
       const data = payload as
@@ -641,24 +673,32 @@ function ensureRealtimeSubscription(playerId: string): void {
         const row = payload.new as DbRoomRow | undefined;
         if (!row?.code) return;
         if (row.host_player_id !== playerId && row.partner_player_id !== playerId) return;
+        const isInsert = payload.eventType === 'INSERT';
         const assembled = await assembleGameRoom(row);
         roomListeners.forEach((cb) =>
-          cb({
-            ...assembled,
-            turnStartedAt: Date.now(),
-          })
+          cb(
+            {
+              ...assembled,
+              turnStartedAt: Date.now(),
+            },
+            { isInsert }
+          )
         );
       }
     )
     .subscribe();
 }
 
-export function broadcastSupabaseRoomUpdate(room: GameRoom, senderId = ''): void {
+export function broadcastSupabaseRoomUpdate(
+  room: GameRoom,
+  senderId = '',
+  rematchFromCode?: string
+): void {
   if (room.code === STARTER_ROOM_CODE || !realtimeChannel) return;
   void realtimeChannel.send({
     type: 'broadcast',
     event: 'room_update',
-    payload: { room, senderId },
+    payload: rematchFromCode ? { room, senderId, rematchFromCode } : { room, senderId },
   });
 }
 
@@ -677,7 +717,7 @@ export function broadcastSupabaseTyping(
 
 export function subscribeSupabaseSync(
   playerId: string,
-  onRoomUpdate: (room: GameRoom) => void,
+  onRoomUpdate: (room: GameRoom, meta?: RoomUpdateMeta) => void,
   onTypingChange?: (roomCode: string, playerId: string, isTyping: boolean) => void
 ): () => void {
   if (!getSupabaseClient() || !isValidUuid(playerId)) return () => {};

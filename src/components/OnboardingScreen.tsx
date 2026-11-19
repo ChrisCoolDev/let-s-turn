@@ -81,7 +81,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               : name.trim() || 'Crée ton profil'}
           </h1>
           <p className="mt-1 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
-            {AVATAR_LABELS[avatarId]} · Zéro inscription
+            {AVATAR_LABELS[avatarId]} 
           </p>
         </div>
 

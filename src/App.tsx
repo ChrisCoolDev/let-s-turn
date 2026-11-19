@@ -14,6 +14,7 @@ import {
   createNewRoom,
   createOrUpsertRemoteRoom,
   ensureSupabaseSession,
+  generateRoomCode,
   generateUuid,
   joinRoomRemoteOrLocal,
   loadProfile,
@@ -22,6 +23,7 @@ import {
   pickSmartPartnerMove,
   pushRemoteMove,
   requestPushPermissionAndNotify,
+  type RoomUpdateMeta,
   saveProfile,
   saveRooms,
   subscribeRealtimeSync,
@@ -56,6 +58,12 @@ function parsePendingJoinCode(): string | null {
   return null;
 }
 
+function isSameDuo(a: GameRoom, b: GameRoom): boolean {
+  const pairA = [a.hostPlayer.playerId, a.partnerPlayer.playerId].sort();
+  const pairB = [b.hostPlayer.playerId, b.partnerPlayer.playerId].sort();
+  return pairA[0] === pairB[0] && pairA[1] === pairB[1];
+}
+
 export function App() {
   const [profile, setProfile] = useState<PlayerProfile | null>(() => loadProfile());
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() =>
@@ -81,6 +89,15 @@ export function App() {
   const rewardedRoomsRef = useRef<Set<string>>(new Set());
   const [authBootstrapped, setAuthBootstrapped] = useState(false);
 
+  const roomsRef = useRef(rooms);
+  roomsRef.current = rooms;
+  const activeRoomCodeRef = useRef(activeRoomCode);
+  activeRoomCodeRef.current = activeRoomCode;
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+
   // Sync theme attribute to <html>
   useEffect(() => {
     const theme = profile?.activeTheme ?? 'classic';
@@ -98,6 +115,8 @@ export function App() {
         const localRooms = localProfile ? loadRooms(localProfile) : {};
         const synced = await bootstrapSupabaseState(localProfile, localRooms);
         if (synced.profile && (localProfile || !loadProfile())) {
+          profileRef.current = synced.profile;
+          roomsRef.current = synced.rooms;
           setProfile(synced.profile);
           setRooms(synced.rooms);
         }
@@ -118,176 +137,205 @@ export function App() {
 
     void (async () => {
       const joined = await joinRoomRemoteOrLocal(codeToJoin, profile);
-      setRooms((prev) => {
-        const next = { ...prev, [joined.code]: joined };
-        saveRooms(next);
-        return next;
-      });
+      const next = { ...roomsRef.current, [joined.code]: joined };
+      roomsRef.current = next;
+      saveRooms(next);
+      setRooms(next);
       setActiveRoomCode(joined.code);
       setScreen(joined.status === 'completed' ? 'victory' : 'board');
     })();
   }, [authBootstrapped, profile, pendingJoinCode]);
 
-  const completeRoomVictory = useCallback(
-    (completedRoom: GameRoom) => {
-      if (!profile) return;
-      const rewardKey = `${completedRoom.code}:${completedRoom.startedAt}`;
-      if (rewardedRoomsRef.current.has(rewardKey)) {
-        setScreen('victory');
-        return;
-      }
-      rewardedRoomsRef.current.add(rewardKey);
-
-      const actualSteps = completedRoom.moves.length + completedRoom.undoPenaltyCount;
-      const durationSeconds = completedRoom.completedAt
-        ? Math.max(1, Math.round((completedRoom.completedAt - completedRoom.startedAt) / 1000))
-        : 45;
-      const starsEarned =
-        actualSteps <= completedRoom.optimalPar
-          ? 3
-          : actualSteps <= completedRoom.optimalPar + 2
-          ? 2
-          : 1;
-      const xpEarned = 40 + starsEarned * 20;
-
-      const wordsInGame = [
-        completedRoom.startWord,
-        ...completedRoom.moves.map((m) => m.word),
-      ];
-      const uniqueWords = Array.from(new Set([...profile.uniqueWordsUsed, ...wordsInGame]));
-
-      const isHost = completedRoom.hostPlayer.playerId === profile.playerId;
-      const partner = isHost ? completedRoom.partnerPlayer : completedRoom.hostPlayer;
-
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const shouldIncrementStreak = profile.lastPlayedDate !== todayStr;
-
-      const updatedProfile: PlayerProfile = {
-        ...profile,
-        xp: profile.xp + xpEarned,
-        stars: profile.stars + starsEarned,
-        streak: shouldIncrementStreak ? profile.streak + 1 : profile.streak,
-        lastPlayedDate: todayStr,
-        gamesPlayed: profile.gamesPlayed + 1,
-        gamesWon: profile.gamesWon + 1,
-        optimalWins:
-          actualSteps <= completedRoom.optimalPar
-            ? profile.optimalWins + 1
-            : profile.optimalWins,
-        noHintWins:
-          completedRoom.hintsUsed === 0 ? profile.noHintWins + 1 : profile.noHintWins,
-        fastestWinSeconds:
-          profile.fastestWinSeconds === null
-            ? durationSeconds
-            : Math.min(profile.fastestWinSeconds, durationSeconds),
-        longestWordSolved: Math.max(profile.longestWordSolved, completedRoom.wordLength),
-        uniqueWordsUsed: uniqueWords,
-        savedBestChains: [
-          {
-            id: `chain-${Date.now()}`,
-            startWord: completedRoom.startWord,
-            targetWord: completedRoom.targetWord,
-            words: wordsInGame,
-            optimalSteps: completedRoom.optimalPar,
-            actualSteps,
-            partnerName: partner.name,
-            language: completedRoom.language,
-            completedAt: Date.now(),
-          },
-          ...profile.savedBestChains,
-        ].slice(0, 15),
-      };
-
-      const newlyUnlocked = evaluateNewBadges(updatedProfile, {
-        durationSeconds,
-        actualSteps,
-        optimalPar: completedRoom.optimalPar,
-        hintsUsed: completedRoom.hintsUsed,
-        wordLength: completedRoom.wordLength,
-      });
-
-      if (newlyUnlocked.length > 0) {
-        updatedProfile.unlockedBadges = [
-          ...updatedProfile.unlockedBadges,
-          ...newlyUnlocked,
-        ];
-      }
-
-      saveProfile(updatedProfile);
-      setProfile(updatedProfile);
-      setLastVictoryMeta({
-        roomCode: completedRoom.code,
-        newlyUnlockedBadges: newlyUnlocked,
-        earnedXp: xpEarned,
-        earnedStars: starsEarned,
-      });
+  const completeRoomVictory = useCallback((completedRoom: GameRoom) => {
+    const activeProfile = profileRef.current;
+    if (!activeProfile) return;
+    const rewardKey = `${completedRoom.code}:${completedRoom.startWord}:${completedRoom.targetWord}`;
+    if (rewardedRoomsRef.current.has(rewardKey)) {
+      setActiveRoomCode(completedRoom.code);
       setScreen('victory');
-    },
-    [profile]
-  );
+      return;
+    }
+    rewardedRoomsRef.current.add(rewardKey);
+
+    const actualSteps = completedRoom.moves.length + completedRoom.undoPenaltyCount;
+    const durationSeconds = completedRoom.completedAt
+      ? Math.max(1, Math.round((completedRoom.completedAt - completedRoom.startedAt) / 1000))
+      : 45;
+    const starsEarned =
+      actualSteps <= completedRoom.optimalPar
+        ? 3
+        : actualSteps <= completedRoom.optimalPar + 2
+        ? 2
+        : 1;
+    const xpEarned = 40 + starsEarned * 20;
+
+    const wordsInGame = [
+      completedRoom.startWord,
+      ...completedRoom.moves.map((m) => m.word),
+    ];
+    const uniqueWords = Array.from(new Set([...activeProfile.uniqueWordsUsed, ...wordsInGame]));
+
+    const isHost =
+      completedRoom.hostPlayer.playerId === activeProfile.playerId ||
+      (completedRoom.partnerPlayer.playerId !== activeProfile.playerId &&
+        completedRoom.hostPlayer.name === activeProfile.name &&
+        completedRoom.partnerPlayer.name !== activeProfile.name);
+    const partner = isHost ? completedRoom.partnerPlayer : completedRoom.hostPlayer;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const shouldIncrementStreak = activeProfile.lastPlayedDate !== todayStr;
+
+    const updatedProfile: PlayerProfile = {
+      ...activeProfile,
+      xp: activeProfile.xp + xpEarned,
+      stars: activeProfile.stars + starsEarned,
+      streak: shouldIncrementStreak ? activeProfile.streak + 1 : activeProfile.streak,
+      lastPlayedDate: todayStr,
+      gamesPlayed: activeProfile.gamesPlayed + 1,
+      gamesWon: activeProfile.gamesWon + 1,
+      optimalWins:
+        actualSteps <= completedRoom.optimalPar
+          ? activeProfile.optimalWins + 1
+          : activeProfile.optimalWins,
+      noHintWins:
+        completedRoom.hintsUsed === 0 ? activeProfile.noHintWins + 1 : activeProfile.noHintWins,
+      fastestWinSeconds:
+        activeProfile.fastestWinSeconds === null
+          ? durationSeconds
+          : Math.min(activeProfile.fastestWinSeconds, durationSeconds),
+      longestWordSolved: Math.max(activeProfile.longestWordSolved, completedRoom.wordLength),
+      uniqueWordsUsed: uniqueWords,
+      savedBestChains: [
+        {
+          id: `chain-${Date.now()}`,
+          startWord: completedRoom.startWord,
+          targetWord: completedRoom.targetWord,
+          words: wordsInGame,
+          optimalSteps: completedRoom.optimalPar,
+          actualSteps,
+          partnerName: partner.name,
+          language: completedRoom.language,
+          completedAt: Date.now(),
+        },
+        ...activeProfile.savedBestChains,
+      ].slice(0, 15),
+    };
+
+    const newlyUnlocked = evaluateNewBadges(updatedProfile, {
+      durationSeconds,
+      actualSteps,
+      optimalPar: completedRoom.optimalPar,
+      hintsUsed: completedRoom.hintsUsed,
+      wordLength: completedRoom.wordLength,
+    });
+
+    if (newlyUnlocked.length > 0) {
+      updatedProfile.unlockedBadges = [
+        ...updatedProfile.unlockedBadges,
+        ...newlyUnlocked,
+      ];
+    }
+
+    profileRef.current = updatedProfile;
+    saveProfile(updatedProfile);
+    setProfile(updatedProfile);
+    setLastVictoryMeta({
+      roomCode: completedRoom.code,
+      newlyUnlockedBadges: newlyUnlocked,
+      earnedXp: xpEarned,
+      earnedStars: starsEarned,
+    });
+    setActiveRoomCode(completedRoom.code);
+    setScreen('victory');
+  }, []);
+
+  const completeRoomVictoryRef = useRef(completeRoomVictory);
+  completeRoomVictoryRef.current = completeRoomVictory;
 
   // Subscribe to real-time updates (BroadcastChannel + Supabase Realtime)
+  const playerId = profile?.playerId ?? null;
   useEffect(() => {
-    if (!profile) return;
+    if (!playerId) return;
     return subscribeRealtimeSync(
-      profile.playerId,
-      (updatedRoom) => {
-        let shouldTriggerVictory = false;
-        setRooms((prev) => {
-          const existing = prev[updatedRoom.code];
-          if (
-            existing &&
-            existing.status === 'active' &&
-            updatedRoom.status === 'active' &&
-            existing.moves.length > updatedRoom.moves.length &&
-            existing.undoPenaltyCount >= updatedRoom.undoPenaltyCount
+      playerId,
+      (updatedRoom: GameRoom, meta?: RoomUpdateMeta) => {
+        const prev = roomsRef.current;
+        const existing = prev[updatedRoom.code];
+        if (
+          existing &&
+          existing.status === 'active' &&
+          updatedRoom.status === 'active' &&
+          existing.moves.length > updatedRoom.moves.length &&
+          existing.undoPenaltyCount >= updatedRoom.undoPenaltyCount
+        ) {
+          return;
+        }
+        if (
+          existing &&
+          existing.status === 'completed' &&
+          updatedRoom.status === 'completed' &&
+          existing.moves.length > updatedRoom.moves.length
+        ) {
+          return;
+        }
+        if (existing && existing.status === 'completed' && updatedRoom.status === 'active') {
+          return;
+        }
+
+        let mergedRoom = updatedRoom;
+        if (existing) {
+          if (existing.autoPartnerEnabled && !updatedRoom.autoPartnerEnabled) {
+            mergedRoom = { ...updatedRoom, turnStartedAt: Date.now() };
+          } else if (
+            existing.currentTurnPlayerId !== updatedRoom.currentTurnPlayerId ||
+            updatedRoom.moves.length > existing.moves.length
           ) {
-            return prev;
+            // Anchor the new turn to this device's local clock to eliminate cross-device clock skew
+            mergedRoom = { ...updatedRoom, turnStartedAt: Date.now() };
+          } else if (
+            existing.currentTurnPlayerId === updatedRoom.currentTurnPlayerId &&
+            existing.currentWord === updatedRoom.currentWord &&
+            existing.moves.length === updatedRoom.moves.length
+          ) {
+            mergedRoom = {
+              ...updatedRoom,
+              turnStartedAt: existing.turnStartedAt ?? updatedRoom.turnStartedAt ?? Date.now(),
+              lastTurnPass: updatedRoom.lastTurnPass ?? existing.lastTurnPass,
+            };
           }
+        }
 
-          let mergedRoom = updatedRoom;
-          if (existing) {
-            if (existing.autoPartnerEnabled && !updatedRoom.autoPartnerEnabled) {
-              mergedRoom = { ...updatedRoom, turnStartedAt: Date.now() };
-            } else if (
-              existing.currentTurnPlayerId !== updatedRoom.currentTurnPlayerId ||
-              updatedRoom.moves.length > existing.moves.length
-            ) {
-              // Anchor the new turn to this device's local clock to eliminate cross-device clock skew
-              mergedRoom = { ...updatedRoom, turnStartedAt: Date.now() };
-            } else if (
-              existing.currentTurnPlayerId === updatedRoom.currentTurnPlayerId &&
-              existing.currentWord === updatedRoom.currentWord &&
-              existing.moves.length === updatedRoom.moves.length
-            ) {
-              mergedRoom = {
-                ...updatedRoom,
-                turnStartedAt: existing.turnStartedAt ?? updatedRoom.turnStartedAt ?? Date.now(),
-                lastTurnPass: updatedRoom.lastTurnPass ?? existing.lastTurnPass,
-              };
-            }
+        const next = { ...prev, [mergedRoom.code]: mergedRoom };
+        roomsRef.current = next;
+        saveRooms(next);
+        setRooms(next);
+
+        if (mergedRoom.status === 'completed' && existing?.status !== 'completed') {
+          if (activeRoomCodeRef.current === mergedRoom.code || screenRef.current === 'hub') {
+            window.setTimeout(() => completeRoomVictoryRef.current(mergedRoom), 380);
           }
+        }
 
-          if (updatedRoom.status === 'completed' && existing?.status !== 'completed') {
-            shouldTriggerVictory = true;
-          }
-
-          const next = { ...prev, [mergedRoom.code]: mergedRoom };
-          saveRooms(next);
-          return next;
-        });
-
-        if (shouldTriggerVictory) {
-          window.setTimeout(() => completeRoomVictory(updatedRoom), 380);
+        const currentActive = activeRoomCodeRef.current ? next[activeRoomCodeRef.current] : null;
+        if (
+          screenRef.current === 'victory' &&
+          currentActive &&
+          mergedRoom.status === 'active' &&
+          mergedRoom.code !== currentActive.code &&
+          (meta?.rematchFromCode === currentActive.code ||
+            (!existing && isSameDuo(currentActive, mergedRoom)))
+        ) {
+          setActiveRoomCode(mergedRoom.code);
+          setScreen('board');
         }
       },
       (roomCode, senderPlayerId, isTyping) => {
-        if (senderPlayerId === profile.playerId) return;
+        if (senderPlayerId === playerId) return;
         setRooms((prev) => {
           const room = prev[roomCode];
           if (!room) return prev;
           const isPartnerHost = room.hostPlayer.playerId === senderPlayerId;
-          return {
+          const next = {
             ...prev,
             [roomCode]: {
               ...room,
@@ -299,71 +347,70 @@ export function App() {
                 : room.partnerPlayer,
             },
           };
+          roomsRef.current = next;
+          return next;
         });
       }
     );
-  }, [profile, completeRoomVictory]);
+  }, [playerId]);
 
-  const handleSubmitMove = useCallback(
-    (roomCode: string, nextWord: string) => {
-      if (!profile) return;
+  const handleSubmitMove = useCallback((roomCode: string, nextWord: string) => {
+    const activeProfile = profileRef.current;
+    if (!activeProfile) return;
 
-      setRooms((prev) => {
-        const room = prev[roomCode];
-        if (!room || room.status === 'completed') return prev;
-        if (room.currentTurnPlayerId !== profile.playerId) return prev;
+    const prev = roomsRef.current;
+    const room = prev[roomCode];
+    if (!room || room.status === 'completed') return;
+    if (room.currentTurnPlayerId !== activeProfile.playerId) return;
 
-        const diff = isOneLetterDiff(room.currentWord, nextWord);
-        if (!diff.valid) return prev;
+    const diff = isOneLetterDiff(room.currentWord, nextWord);
+    if (!diff.valid) return;
 
-        const isHost = room.hostPlayer.playerId === profile.playerId;
-        const actor = isHost ? room.hostPlayer : room.partnerPlayer;
-        const partnerPresence = isHost ? room.partnerPlayer : room.hostPlayer;
-        const nextTurnPlayerId = partnerPresence.playerId;
+    const isHost = room.hostPlayer.playerId === activeProfile.playerId;
+    const actor = isHost ? room.hostPlayer : room.partnerPlayer;
+    const partnerPresence = isHost ? room.partnerPlayer : room.hostPlayer;
+    const nextTurnPlayerId = partnerPresence.playerId;
 
-        const move: WordMove = {
-          id: generateUuid(),
-          word: nextWord,
-          previousWord: room.currentWord,
-          changedIndex: diff.changedIndex,
-          fromChar: diff.fromChar,
-          toChar: diff.toChar,
-          playerId: actor.playerId,
-          playerName: actor.name,
-          playerAvatarId: actor.avatarId,
-          playerColor: actor.color,
-          timestamp: Date.now(),
-        };
+    const move: WordMove = {
+      id: generateUuid(),
+      word: nextWord,
+      previousWord: room.currentWord,
+      changedIndex: diff.changedIndex,
+      fromChar: diff.fromChar,
+      toChar: diff.toChar,
+      playerId: actor.playerId,
+      playerName: actor.name,
+      playerAvatarId: actor.avatarId,
+      playerColor: actor.color,
+      timestamp: Date.now(),
+    };
 
-        const reachedTarget = nextWord === room.targetWord;
-        const updatedRoom: GameRoom = {
-          ...room,
-          currentWord: nextWord,
-          moves: [...room.moves, move],
-          currentTurnPlayerId: reachedTarget ? room.currentTurnPlayerId : nextTurnPlayerId,
-          turnStartedAt: Date.now(),
-          lastTurnPass: undefined,
-          status: reachedTarget ? 'completed' : 'active',
-          completedAt: reachedTarget ? Date.now() : undefined,
-          winnerPlayerId: reachedTarget ? actor.playerId : undefined,
-          hostPlayer: { ...room.hostPlayer, isTyping: false },
-          partnerPlayer: { ...room.partnerPlayer, isTyping: false },
-        };
+    const reachedTarget = nextWord === room.targetWord;
+    const updatedRoom: GameRoom = {
+      ...room,
+      currentWord: nextWord,
+      moves: [...room.moves, move],
+      currentTurnPlayerId: reachedTarget ? room.currentTurnPlayerId : nextTurnPlayerId,
+      turnStartedAt: Date.now(),
+      lastTurnPass: undefined,
+      status: reachedTarget ? 'completed' : 'active',
+      completedAt: reachedTarget ? Date.now() : undefined,
+      winnerPlayerId: reachedTarget ? actor.playerId : undefined,
+      hostPlayer: { ...room.hostPlayer, isTyping: false },
+      partnerPlayer: { ...room.partnerPlayer, isTyping: false },
+    };
 
-        const nextRooms = { ...prev, [roomCode]: updatedRoom };
-        saveRooms(nextRooms);
-        broadcastRoomUpdate(updatedRoom, profile.playerId);
-        void pushRemoteMove(updatedRoom, move);
+    const nextRooms = { ...prev, [roomCode]: updatedRoom };
+    roomsRef.current = nextRooms;
+    saveRooms(nextRooms);
+    setRooms(nextRooms);
+    broadcastRoomUpdate(updatedRoom, activeProfile.playerId);
+    void pushRemoteMove(updatedRoom, move);
 
-        if (reachedTarget) {
-          window.setTimeout(() => completeRoomVictory(updatedRoom), 380);
-        }
-
-        return nextRooms;
-      });
-    },
-    [profile, completeRoomVictory]
-  );
+    if (reachedTarget) {
+      window.setTimeout(() => completeRoomVictoryRef.current(updatedRoom), 380);
+    }
+  }, []);
 
   // Automatic smart partner response (Carole) when it's her turn & autoPartnerEnabled is true
   useEffect(() => {
@@ -418,6 +465,7 @@ export function App() {
         };
 
         const nextRooms = { ...prev, [activeRoomCode]: updated };
+        roomsRef.current = nextRooms;
         saveRooms(nextRooms);
         broadcastRoomUpdate(updated, partner.playerId);
         void updateRemoteRoomState(updated);
@@ -428,7 +476,7 @@ export function App() {
         );
 
         if (reachedTarget) {
-          window.setTimeout(() => completeRoomVictory(updated), 380);
+          window.setTimeout(() => completeRoomVictoryRef.current(updated), 380);
         }
 
         return nextRooms;
@@ -439,7 +487,7 @@ export function App() {
       window.clearTimeout(typingTimer);
       if (partnerTimerRef.current) window.clearTimeout(partnerTimerRef.current);
     };
-  }, [rooms, activeRoomCode, screen, profile, completeRoomVictory]);
+  }, [rooms, activeRoomCode, screen, profile]);
 
   const hasTimeoutCandidate = Boolean(
     profile &&
@@ -485,6 +533,7 @@ export function App() {
           }
         }
         if (changed) {
+          roomsRef.current = next;
           saveRooms(next);
           return next;
         }
@@ -508,6 +557,7 @@ export function App() {
   const handleOnboardingComplete = async (name: string, avatarId: AvatarId, color: string) => {
     const uid = await ensureSupabaseSession();
     const newProfile = createInitialProfile(name, avatarId, color, uid ?? undefined);
+    profileRef.current = newProfile;
     setProfile(newProfile);
     const loadedRooms = loadRooms(newProfile);
 
@@ -519,11 +569,13 @@ export function App() {
       }
       const joined = await joinRoomRemoteOrLocal(codeToJoin, newProfile);
       const merged = { ...loadedRooms, [joined.code]: joined };
+      roomsRef.current = merged;
       saveRooms(merged);
       setRooms(merged);
       setActiveRoomCode(joined.code);
       setScreen(joined.status === 'completed' ? 'victory' : 'board');
     } else {
+      roomsRef.current = loadedRooms;
       setRooms(loadedRooms);
       setScreen('hub');
     }
@@ -536,11 +588,10 @@ export function App() {
   ): GameRoom => {
     if (!profile) throw new Error('Profile required');
     const newRoom = createNewRoom(profile, language, wordLength, mode);
-    setRooms((prev) => {
-      const next = { ...prev, [newRoom.code]: newRoom };
-      saveRooms(next);
-      return next;
-    });
+    const next = { ...roomsRef.current, [newRoom.code]: newRoom };
+    roomsRef.current = next;
+    saveRooms(next);
+    setRooms(next);
     broadcastRoomUpdate(newRoom, profile.playerId);
     void createOrUpsertRemoteRoom(newRoom);
     return newRoom;
@@ -549,76 +600,102 @@ export function App() {
   const handleJoinByCode = async (code: string) => {
     if (!profile) return;
     const room = await joinRoomRemoteOrLocal(code, profile);
-    setRooms((prev) => {
-      const next = { ...prev, [room.code]: room };
-      saveRooms(next);
-      return next;
-    });
+    const next = { ...roomsRef.current, [room.code]: room };
+    roomsRef.current = next;
+    saveRooms(next);
+    setRooms(next);
     setActiveRoomCode(room.code);
     setScreen(room.status === 'completed' ? 'victory' : 'board');
   };
 
   const handleUndoMove = (roomCode: string) => {
     if (!profile) return;
-    setRooms((prev) => {
-      const room = prev[roomCode];
-      if (!room || room.moves.length === 0 || room.status === 'completed') return prev;
+    const prev = roomsRef.current;
+    const room = prev[roomCode];
+    if (!room || room.moves.length === 0 || room.status === 'completed') return;
 
-      const trimmedMoves = room.moves.slice(0, -1);
-      const revertedWord =
-        trimmedMoves.length > 0 ? trimmedMoves[trimmedMoves.length - 1].word : room.startWord;
+    const trimmedMoves = room.moves.slice(0, -1);
+    const revertedWord =
+      trimmedMoves.length > 0 ? trimmedMoves[trimmedMoves.length - 1].word : room.startWord;
 
-      const updated: GameRoom = {
-        ...room,
-        currentWord: revertedWord,
-        moves: trimmedMoves,
-        undoPenaltyCount: room.undoPenaltyCount + 1,
-        currentTurnPlayerId: profile.playerId,
-        turnStartedAt: Date.now(),
-        lastTurnPass: undefined,
-        hostPlayer: { ...room.hostPlayer, isTyping: false },
-        partnerPlayer: { ...room.partnerPlayer, isTyping: false },
-      };
-      const next = { ...prev, [roomCode]: updated };
-      saveRooms(next);
-      broadcastRoomUpdate(updated, profile.playerId);
-      void updateRemoteRoomState(updated);
-      return next;
-    });
+    const updated: GameRoom = {
+      ...room,
+      currentWord: revertedWord,
+      moves: trimmedMoves,
+      undoPenaltyCount: room.undoPenaltyCount + 1,
+      currentTurnPlayerId: profile.playerId,
+      turnStartedAt: Date.now(),
+      lastTurnPass: undefined,
+      hostPlayer: { ...room.hostPlayer, isTyping: false },
+      partnerPlayer: { ...room.partnerPlayer, isTyping: false },
+    };
+    const next = { ...prev, [roomCode]: updated };
+    roomsRef.current = next;
+    saveRooms(next);
+    setRooms(next);
+    broadcastRoomUpdate(updated, profile.playerId);
+    void updateRemoteRoomState(updated);
   };
 
   const handleUseHint = (roomCode: string): boolean => {
     if (!profile || profile.stars < 1) return false;
 
     const updatedProfile = { ...profile, stars: profile.stars - 1 };
+    profileRef.current = updatedProfile;
     saveProfile(updatedProfile);
     setProfile(updatedProfile);
 
-    setRooms((prev) => {
-      const room = prev[roomCode];
-      if (!room) return prev;
+    const prev = roomsRef.current;
+    const room = prev[roomCode];
+    if (room) {
       const updated = { ...room, hintsUsed: room.hintsUsed + 1 };
       const next = { ...prev, [roomCode]: updated };
+      roomsRef.current = next;
       saveRooms(next);
+      setRooms(next);
       void updateRemoteRoomState(updated);
-      return next;
-    });
+    }
     return true;
   };
 
-  const handleRematch = (roomCode: string) => {
+  const handleRematch = (oldRoomCode: string) => {
     if (!profile) return;
-    const oldRoom = rooms[roomCode];
+    const oldRoom = roomsRef.current[oldRoomCode];
     if (!oldRoom) return;
+
+    const isHost =
+      oldRoom.hostPlayer.playerId === profile.playerId ||
+      (oldRoom.partnerPlayer.playerId !== profile.playerId &&
+        oldRoom.hostPlayer.name === profile.name &&
+        oldRoom.partnerPlayer.name !== profile.name);
+    const otherPlayer = isHost ? oldRoom.partnerPlayer : oldRoom.hostPlayer;
+    const rematchMode: GameMode = oldRoom.mode === 'daily' ? 'coop' : oldRoom.mode;
 
     const pair = generateWordPair(
       oldRoom.language,
       oldRoom.wordLength,
-      oldRoom.mode,
+      rematchMode,
       oldRoom.startWord
     );
+
+    let newCode = generateRoomCode(pair.startWord);
+    let guard = 0;
+    while (
+      (newCode === oldRoom.code || roomsRef.current[newCode] || newCode === 'WINE-42') &&
+      guard < 20
+    ) {
+      newCode = generateRoomCode(pair.startWord);
+      guard++;
+    }
+    if (newCode === oldRoom.code || roomsRef.current[newCode] || newCode === 'WINE-42') {
+      newCode = `${pair.startWord.slice(0, 4).toUpperCase()}-${Math.floor(100 + Math.random() * 899)}`;
+    }
+
     const freshRoom: GameRoom = {
-      ...oldRoom,
+      code: newCode,
+      language: oldRoom.language,
+      wordLength: oldRoom.wordLength,
+      mode: rematchMode,
       startWord: pair.startWord,
       targetWord: pair.targetWord,
       currentWord: pair.startWord,
@@ -630,22 +707,30 @@ export function App() {
       currentTurnPlayerId: profile.playerId,
       turnStartedAt: Date.now(),
       lastTurnPass: undefined,
+      hostPlayer: {
+        playerId: profile.playerId,
+        name: profile.name,
+        avatarId: profile.avatarId,
+        color: profile.color,
+        online: true,
+        isTyping: false,
+        lastSeen: Date.now(),
+      },
+      partnerPlayer: { ...otherPlayer, isTyping: false },
+      autoPartnerEnabled: oldRoom.autoPartnerEnabled,
       status: 'active',
       startedAt: Date.now(),
       completedAt: undefined,
       winnerPlayerId: undefined,
-      hostPlayer: { ...oldRoom.hostPlayer, isTyping: false },
-      partnerPlayer: { ...oldRoom.partnerPlayer, isTyping: false },
     };
 
-    setRooms((prev) => {
-      const next = { ...prev, [roomCode]: freshRoom };
-      saveRooms(next);
-      return next;
-    });
-    broadcastRoomUpdate(freshRoom, profile.playerId);
-    void updateRemoteRoomState(freshRoom);
-    setActiveRoomCode(roomCode);
+    const next = { ...roomsRef.current, [newCode]: freshRoom };
+    roomsRef.current = next;
+    saveRooms(next);
+    setRooms(next);
+    void createOrUpsertRemoteRoom(freshRoom);
+    broadcastRoomUpdate(freshRoom, profile.playerId, oldRoom.code);
+    setActiveRoomCode(newCode);
     setScreen('board');
   };
 
@@ -688,6 +773,15 @@ export function App() {
     return true;
   };
 
+  const activeRoom = activeRoomCode ? rooms[activeRoomCode] : null;
+
+  useEffect(() => {
+    if (screen === 'board' && activeRoom && activeRoom.status === 'completed') {
+      const t = window.setTimeout(() => completeRoomVictoryRef.current(activeRoom), 380);
+      return () => window.clearTimeout(t);
+    }
+  }, [screen, activeRoom?.code, activeRoom?.status]);
+
   if (!profile) {
     return (
       <OnboardingScreen
@@ -696,8 +790,6 @@ export function App() {
       />
     );
   }
-
-  const activeRoom = activeRoomCode ? rooms[activeRoomCode] : null;
 
   return (
     <div className="min-h-dvh w-full" style={{ backgroundColor: 'var(--bg-app)' }}>
@@ -720,6 +812,7 @@ export function App() {
 
       {screen === 'board' && activeRoom && (
         <GameBoardScreen
+          key={activeRoom.code}
           room={activeRoom}
           profile={profile}
           onBackToHub={() => setScreen('hub')}
@@ -735,6 +828,7 @@ export function App() {
 
       {screen === 'victory' && activeRoom && (
         <VictoryScreen
+          key={activeRoom.code}
           room={activeRoom}
           profile={profile}
           newlyUnlockedBadgeIds={
