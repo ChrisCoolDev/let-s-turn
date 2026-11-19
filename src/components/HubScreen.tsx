@@ -10,7 +10,11 @@ import {
 import { FigmaAvatar, FigmaFlameIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
 import { getLevelInfo } from '../engine/gamification';
-import { TURN_TIMEOUT_MS } from '../services/multiplayer';
+import {
+  isBotPartner,
+  isWaitingPartner,
+  TURN_TIMEOUT_MS,
+} from '../services/multiplayer';
 import { PwaInstallBanner } from './PwaInstallBanner';
 import type { GameRoom, PlayerProfile } from '../types/game';
 
@@ -176,7 +180,9 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       return b.startedAt - a.startedAt;
     });
 
-  const hasMultiplayerTurn = activeRooms.some((r) => !r.autoPartnerEnabled);
+  const hasMultiplayerTurn = activeRooms.some(
+    (r) => !r.autoPartnerEnabled && !isWaitingPartner(r.partnerPlayer.playerId)
+  );
 
   useEffect(() => {
     if (!hasMultiplayerTurn) return;
@@ -338,6 +344,8 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                   room.hostPlayer.name === profile.name &&
                   room.partnerPlayer.name !== profile.name);
               const partner = isHost ? room.partnerPlayer : room.hostPlayer;
+              const waiting = isWaitingPartner(partner.playerId);
+              const isBot = isBotPartner(partner.playerId);
               const isMyTurn = room.currentTurnPlayerId === profile.playerId;
               const moves = room.moves.length + room.undoPenaltyCount;
               const overPar = moves > room.optimalPar;
@@ -362,15 +370,17 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                       <FigmaAvatar
                         avatarId={partner.avatarId}
                         size={40}
-                        ringColor={partner.color}
-                        onlineDot={partner.online}
+                        ringColor={waiting ? undefined : partner.color}
+                        onlineDot={!waiting && partner.online}
+                        empty={waiting}
+                        isBot={isBot}
                       />
                       <div className="min-w-0 leading-tight">
                         <p
                           className="truncate text-[17px] font-black"
-                          style={{ color: 'var(--text-primary)' }}
+                          style={{ color: waiting ? 'var(--text-muted)' : 'var(--text-primary)' }}
                         >
-                          {partner.name}
+                          {waiting ? 'En attente...' : partner.name}
                         </p>
                         <p className="truncate text-sm font-bold text-[var(--text-muted)]">
                           {room.language === 'FR' ? 'Français' : 'Anglais'} · {room.wordLength}{' '}
@@ -392,6 +402,17 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                     ) : (
                       <span className="flex shrink-0 items-center gap-1.5 text-sm font-extrabold tabular-nums text-[var(--text-muted)]">
                         {(() => {
+                          if (waiting) {
+                            return (
+                              <>
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full"
+                                  style={{ backgroundColor: 'var(--text-muted)' }}
+                                />
+                                En attente
+                              </>
+                            );
+                          }
                           if (room.autoPartnerEnabled) {
                             return (
                               <>

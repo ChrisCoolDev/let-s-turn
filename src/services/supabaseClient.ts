@@ -12,8 +12,18 @@ import type {
   WordMove,
 } from '../types/game';
 
-export const CAROLE_PARTNER_ID = 'partner-carole-fixed';
+export const WAITING_PARTNER_ID = '00000000-0000-0000-0000-000000000000';
+export const MIYU_BOT_ID = 'bot-miyu-fixed';
+export const CAROLE_PARTNER_ID = 'partner-carole-fixed'; // legacy localStorage compatibility
 export const STARTER_ROOM_CODE = 'WINE-42';
+
+export function isWaitingPartner(playerId: string | null | undefined): boolean {
+  return !playerId || playerId === WAITING_PARTNER_ID;
+}
+
+export function isBotPartner(playerId: string | null | undefined): boolean {
+  return playerId === MIYU_BOT_ID || playerId === CAROLE_PARTNER_ID;
+}
 
 export interface RoomUpdateMeta {
   rematchFromCode?: string;
@@ -131,16 +141,32 @@ function clampAvatarId(value: number | null | undefined): AvatarId {
   return 1;
 }
 
-export function createCarolePresence(): PlayerPresence {
+export function createWaitingPartnerPresence(): PlayerPresence {
   return {
-    playerId: CAROLE_PARTNER_ID,
-    name: 'Carole',
+    playerId: WAITING_PARTNER_ID,
+    name: 'En attente...',
     avatarId: 5,
-    color: '#ff4b8b',
+    color: '#cbd5e1',
+    online: false,
+    isTyping: false,
+    lastSeen: Date.now(),
+  };
+}
+
+export function createMiyuPresence(): PlayerPresence {
+  return {
+    playerId: MIYU_BOT_ID,
+    name: 'Miyu',
+    avatarId: 5,
+    color: '#ff9600',
     online: true,
     isTyping: false,
     lastSeen: Date.now(),
   };
+}
+
+export function createCarolePresence(): PlayerPresence {
+  return createMiyuPresence();
 }
 
 function toPresence(
@@ -327,15 +353,20 @@ async function assembleGameRoom(
   ]);
 
   const hostPresence = toPresence(hostProf, dbRoom.host_player_id, existingLocal?.hostPlayer.name ?? 'Hôte');
+  const keepMiyuBot =
+    !dbRoom.partner_player_id &&
+    Boolean(existingLocal && isBotPartner(existingLocal.partnerPlayer.playerId));
   const partnerPresence = dbRoom.partner_player_id
     ? toPresence(
         partnerProf,
         dbRoom.partner_player_id,
         existingLocal?.partnerPlayer.name ?? 'Partenaire'
       )
-    : createCarolePresence();
+    : keepMiyuBot
+    ? createMiyuPresence()
+    : createWaitingPartnerPresence();
 
-  const autoPartnerEnabled = !dbRoom.partner_player_id;
+  const autoPartnerEnabled = keepMiyuBot;
   const moves =
     existingLocal &&
     existingLocal.undoPenaltyCount === dbRoom.undo_penalty_count &&
@@ -353,6 +384,7 @@ async function assembleGameRoom(
 
   const startedAt = Date.parse(dbRoom.started_at) || existingLocal?.startedAt || Date.now();
   const completedAt = dbRoom.completed_at ? Date.parse(dbRoom.completed_at) : undefined;
+  const abandoned = dbRoom.status === 'completed' && dbRoom.current_word !== dbRoom.target_word;
 
   const unchangedTurn =
     existingLocal &&
@@ -385,6 +417,13 @@ async function assembleGameRoom(
     startedAt,
     completedAt,
     winnerPlayerId: dbRoom.winner_player_id ?? undefined,
+    ...(abandoned
+      ? {
+          abandoned: true,
+          abandonedByPlayerId: existingLocal?.abandonedByPlayerId,
+          abandonedByName: existingLocal?.abandonedByName,
+        }
+      : {}),
   };
 }
 
@@ -451,7 +490,10 @@ export async function createOrUpsertRemoteRoom(room: GameRoom): Promise<boolean>
       return false;
     }
 
-    const partnerId = isValidUuid(room.partnerPlayer.playerId) ? room.partnerPlayer.playerId : null;
+    const partnerId =
+      isValidUuid(room.partnerPlayer.playerId) && !isWaitingPartner(room.partnerPlayer.playerId)
+        ? room.partnerPlayer.playerId
+        : null;
     const dbTurnId = isValidUuid(room.currentTurnPlayerId) ? room.currentTurnPlayerId : uid;
 
     const { error } = await client.from('rooms').upsert(
@@ -558,7 +600,10 @@ export async function updateRemoteRoomState(room: GameRoom): Promise<void> {
   const uid = await ensureSupabaseSession();
   if (!uid) return;
 
-  const partnerId = isValidUuid(room.partnerPlayer.playerId) ? room.partnerPlayer.playerId : null;
+  const partnerId =
+    isValidUuid(room.partnerPlayer.playerId) && !isWaitingPartner(room.partnerPlayer.playerId)
+      ? room.partnerPlayer.playerId
+      : null;
   const dbTurnId = isValidUuid(room.currentTurnPlayerId)
     ? room.currentTurnPlayerId
     : room.hostPlayer.playerId;
@@ -694,7 +739,13 @@ export function broadcastSupabaseRoomUpdate(
   senderId = '',
   rematchFromCode?: string
 ): void {
-  if (room.code === STARTER_ROOM_CODE || !realtimeChannel) return;
+  if (
+    room.code === STARTER_ROOM_CODE ||
+    isBotPartner(room.partnerPlayer.playerId) ||
+    !realtimeChannel
+  ) {
+    return;
+  }
   void realtimeChannel.send({
     type: 'broadcast',
     event: 'room_update',

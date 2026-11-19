@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { ArrowRight, Award, Star } from 'lucide-react';
 import { BADGE_DEFINITIONS, getLevelInfo } from '../engine/gamification';
+import { findShortestPath } from '../engine/wordLadder';
+import { isBotPartner, isWaitingPartner } from '../services/multiplayer';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
 import type { GameRoom, PlayerProfile } from '../types/game';
@@ -28,8 +30,9 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   const [xpBarAnimated, setXpBarAnimated] = useState(false);
 
   const actualSteps = room.moves.length + room.undoPenaltyCount;
-  const isOptimal = actualSteps <= room.optimalPar;
-  const starRating = isOptimal ? 3 : actualSteps <= room.optimalPar + 2 ? 2 : 1;
+  const isAbandoned = Boolean(room.abandoned || room.currentWord !== room.targetWord);
+  const isOptimal = !isAbandoned && actualSteps <= room.optimalPar;
+  const starRating = isAbandoned ? 0 : isOptimal ? 3 : actualSteps <= room.optimalPar + 2 ? 2 : 1;
 
   const isHost =
     room.hostPlayer.playerId === profile.playerId ||
@@ -37,6 +40,8 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
       room.hostPlayer.name === profile.name &&
       room.partnerPlayer.name !== profile.name);
   const partner = isHost ? room.partnerPlayer : room.hostPlayer;
+  const partnerWaiting = isWaitingPartner(partner.playerId);
+  const partnerIsBot = isBotPartner(partner.playerId);
   const levelInfo = getLevelInfo(profile.xp);
 
   const durationSec = room.completedAt
@@ -44,6 +49,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
     : 42;
 
   useEffect(() => {
+    if (isAbandoned) return;
     const colors =
       profile.activeParticle === 'hearts'
         ? ['#ff4b8b', '#ff85b3', '#ffc800']
@@ -79,15 +85,27 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
       window.clearTimeout(t2);
       window.clearTimeout(tXp);
     };
-  }, [profile.activeParticle]);
+  }, [profile.activeParticle, isAbandoned]);
 
   const unlockedBadges = useMemo(() => {
+    if (isAbandoned) return [];
     return BADGE_DEFINITIONS.filter((b) => newlyUnlockedBadgeIds.includes(b.id));
-  }, [newlyUnlockedBadgeIds]);
+  }, [newlyUnlockedBadgeIds, isAbandoned]);
 
   const chainWords = useMemo(() => {
     return [room.startWord, ...room.moves.map((m) => m.word)];
   }, [room.startWord, room.moves]);
+
+  const optimalSolution = useMemo(() => {
+    if (!isAbandoned) return [];
+    if (room.optimalPath.length > 0) return room.optimalPath;
+    return (
+      findShortestPath(room.startWord, room.targetWord, room.language) ?? [
+        room.startWord,
+        room.targetWord,
+      ]
+    );
+  }, [isAbandoned, room.optimalPath, room.startWord, room.targetWord, room.language]);
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-between px-4 pb-6 pt-6">
@@ -104,8 +122,10 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
             <FigmaAvatar
               avatarId={partner.avatarId}
               size={60}
-              ringColor={partner.color}
+              ringColor={partnerWaiting ? undefined : partner.color}
               ringGapColor="var(--bg-app)"
+              empty={partnerWaiting}
+              isBot={partnerIsBot}
             />
           </div>
 
@@ -113,7 +133,9 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
             className="text-[28px] font-black leading-tight tracking-tight"
             style={{ color: 'var(--text-primary)' }}
           >
-            {starRating === 3
+            {isAbandoned
+              ? 'Partie terminée'
+              : starRating === 3
               ? 'Parfait ! Score optimal !'
               : starRating === 2
               ? 'Super duo ! Bien joué !'
@@ -121,7 +143,11 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           </h1>
 
           <p className="mt-1.5 text-[15px] font-bold" style={{ color: 'var(--text-muted)' }}>
-            {room.startWord} → {room.targetWord} avec {partner.name} en {durationSec}s
+            {isAbandoned
+              ? room.abandonedByName && room.abandonedByPlayerId !== profile.playerId
+                ? `${room.abandonedByName} a mis fin à la partie · ${room.startWord} → ${room.targetWord}`
+                : `Mot cible non trouvé · ${room.startWord} → ${room.targetWord}`
+              : `${room.startWord} → ${room.targetWord} avec ${partner.name} en ${durationSec}s`}
           </p>
 
           {/* 3 étoiles Duolingo */}
@@ -152,7 +178,11 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               <p
                 className="text-2xl font-black tabular-nums leading-none"
                 style={{
-                  color: isOptimal ? 'var(--duo-green-text)' : 'var(--duo-orange)',
+                  color: isAbandoned
+                    ? 'var(--text-primary)'
+                    : isOptimal
+                    ? 'var(--duo-green-text)'
+                    : 'var(--duo-orange)',
                 }}
               >
                 {actualSteps}
@@ -195,77 +225,183 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
             <WordTiles word={room.targetWord} variant="target" size="sm" />
           </div>
 
-          {/* Parcours étape par étape avec la lettre modifiée mise en avant */}
-          <div
-            className="mt-4 flex flex-wrap items-center justify-center gap-1.5 border-t pt-3.5"
-            style={{ borderColor: 'var(--border-tile)' }}
-          >
-            {chainWords.map((word, idx) => {
-              const prev = idx > 0 ? chainWords[idx - 1] : null;
-              const isFinal = idx === chainWords.length - 1;
-              return (
-                <React.Fragment key={`${word}-${idx}`}>
-                  {idx > 0 && (
-                    <ArrowRight
-                      className="h-3.5 w-3.5 shrink-0 stroke-[2.5]"
-                      style={{ color: 'var(--text-muted)' }}
-                    />
-                  )}
-                  <span
-                    className="inline-flex items-center rounded-lg border px-2.5 py-1 text-[13px] font-black tracking-wider"
-                    style={{
-                      backgroundColor: isFinal
-                        ? 'color-mix(in srgb, var(--duo-green) 14%, var(--bg-tile))'
-                        : 'var(--bg-muted)',
-                      borderColor: isFinal ? 'var(--duo-green)' : 'var(--border-tile)',
-                      color: 'var(--text-primary)',
-                    }}
+          {/* Parcours joué ou Solution optimale révélée */}
+          {isAbandoned ? (
+            <div
+              className="mt-4 space-y-3 border-t pt-3.5"
+              style={{ borderColor: 'var(--border-tile)' }}
+            >
+              {room.moves.length > 0 && (
+                <div>
+                  <p
+                    className="mb-2 text-center text-[11px] font-black uppercase tracking-wider"
+                    style={{ color: 'var(--text-muted)' }}
                   >
-                    {word.split('').map((ch, ci) => {
-                      const changed = prev !== null && prev[ci] !== ch;
+                    Votre essai ({room.moves.length} coup{room.moves.length > 1 ? 's' : ''})
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-1.5">
+                    {chainWords.map((word, idx) => {
+                      const prev = idx > 0 ? chainWords[idx - 1] : null;
                       return (
-                        <span
-                          key={ci}
-                          style={{
-                            color: changed ? 'var(--duo-green-shadow)' : undefined,
-                          }}
-                        >
-                          {ch}
-                        </span>
+                        <React.Fragment key={`played-${word}-${idx}`}>
+                          {idx > 0 && (
+                            <ArrowRight
+                              className="h-3.5 w-3.5 shrink-0 stroke-[2.5]"
+                              style={{ color: 'var(--text-muted)' }}
+                            />
+                          )}
+                          <span
+                            className="inline-flex items-center rounded-lg border px-2.5 py-1 text-[13px] font-black tracking-wider"
+                            style={{
+                              backgroundColor: 'var(--bg-muted)',
+                              borderColor: 'var(--border-tile)',
+                              color: 'var(--text-primary)',
+                            }}
+                          >
+                            {word.split('').map((ch, ci) => {
+                              const changed = prev !== null && prev[ci] !== ch;
+                              return (
+                                <span
+                                  key={ci}
+                                  style={{
+                                    color: changed ? 'var(--duo-blue-text)' : undefined,
+                                  }}
+                                >
+                                  {ch}
+                                </span>
+                              );
+                            })}
+                          </span>
+                        </React.Fragment>
                       );
                     })}
-                  </span>
-                </React.Fragment>
-              );
-            })}
-          </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <p
+                  className="mb-2 text-center text-[11px] font-black uppercase tracking-wider"
+                  style={{ color: 'var(--duo-green-text)' }}
+                >
+                  Solution optimale ({room.optimalPar} coups)
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                  {optimalSolution.map((word, idx) => {
+                    const prev = idx > 0 ? optimalSolution[idx - 1] : null;
+                    const isFinal = idx === optimalSolution.length - 1;
+                    return (
+                      <React.Fragment key={`opt-${word}-${idx}`}>
+                        {idx > 0 && (
+                          <ArrowRight
+                            className="h-3.5 w-3.5 shrink-0 stroke-[2.5]"
+                            style={{ color: 'var(--text-muted)' }}
+                          />
+                        )}
+                        <span
+                          className="inline-flex items-center rounded-lg border px-2.5 py-1 text-[13px] font-black tracking-wider"
+                          style={{
+                            backgroundColor: isFinal
+                              ? 'color-mix(in srgb, var(--duo-green) 14%, var(--bg-tile))'
+                              : 'var(--bg-muted)',
+                            borderColor: isFinal ? 'var(--duo-green)' : 'var(--border-tile)',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          {word.split('').map((ch, ci) => {
+                            const changed = prev !== null && prev[ci] !== ch;
+                            return (
+                              <span
+                                key={ci}
+                                style={{
+                                  color: changed ? 'var(--duo-green-shadow)' : undefined,
+                                }}
+                              >
+                                {ch}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="mt-4 flex flex-wrap items-center justify-center gap-1.5 border-t pt-3.5"
+              style={{ borderColor: 'var(--border-tile)' }}
+            >
+              {chainWords.map((word, idx) => {
+                const prev = idx > 0 ? chainWords[idx - 1] : null;
+                const isFinal = idx === chainWords.length - 1;
+                return (
+                  <React.Fragment key={`${word}-${idx}`}>
+                    {idx > 0 && (
+                      <ArrowRight
+                        className="h-3.5 w-3.5 shrink-0 stroke-[2.5]"
+                        style={{ color: 'var(--text-muted)' }}
+                      />
+                    )}
+                    <span
+                      className="inline-flex items-center rounded-lg border px-2.5 py-1 text-[13px] font-black tracking-wider"
+                      style={{
+                        backgroundColor: isFinal
+                          ? 'color-mix(in srgb, var(--duo-green) 14%, var(--bg-tile))'
+                          : 'var(--bg-muted)',
+                        borderColor: isFinal ? 'var(--duo-green)' : 'var(--border-tile)',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      {word.split('').map((ch, ci) => {
+                        const changed = prev !== null && prev[ci] !== ch;
+                        return (
+                          <span
+                            key={ci}
+                            style={{
+                              color: changed ? 'var(--duo-green-shadow)' : undefined,
+                            }}
+                          >
+                            {ch}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Progression XP & Récompenses */}
-        <div className="duo-card mt-3.5 p-4">
-          <div className="flex items-center justify-between gap-2 text-[15px] font-black">
-            <span className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
-              <FigmaFlameIcon size={18} />+{earnedXp} XP · +{earnedStars} ⭐
-            </span>
-            <span className="text-sm" style={{ color: 'var(--duo-blue-text)' }}>
-              Niv. {levelInfo.level} · {levelInfo.title}
-            </span>
-          </div>
-          <div
-            className="mt-2.5 h-3 w-full overflow-hidden rounded-full"
-            style={{ backgroundColor: 'var(--bg-muted)' }}
-          >
+        {!isAbandoned && (
+          <div className="duo-card mt-3.5 p-4">
+            <div className="flex items-center justify-between gap-2 text-[15px] font-black">
+              <span className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                <FigmaFlameIcon size={18} />+{earnedXp} XP · +{earnedStars} ⭐
+              </span>
+              <span className="text-sm" style={{ color: 'var(--duo-blue-text)' }}>
+                Niv. {levelInfo.level} · {levelInfo.title}
+              </span>
+            </div>
             <div
-              className="relative h-full rounded-full transition-all duration-1000 ease-out"
-              style={{
-                width: `${xpBarAnimated ? Math.max(12, levelInfo.progressPct) : 5}%`,
-                backgroundColor: 'var(--duo-green)',
-              }}
+              className="mt-2.5 h-3 w-full overflow-hidden rounded-full"
+              style={{ backgroundColor: 'var(--bg-muted)' }}
             >
-              <div className="mx-2 mt-0.5 h-1 rounded-full bg-white/35" />
+              <div
+                className="relative h-full rounded-full transition-all duration-1000 ease-out"
+                style={{
+                  width: `${xpBarAnimated ? Math.max(12, levelInfo.progressPct) : 5}%`,
+                  backgroundColor: 'var(--duo-green)',
+                }}
+              >
+                <div className="mx-2 mt-0.5 h-1 rounded-full bg-white/35" />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Carte des Badges débloqués */}
         {unlockedBadges.length > 0 && (

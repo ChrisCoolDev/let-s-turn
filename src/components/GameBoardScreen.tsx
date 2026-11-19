@@ -8,15 +8,23 @@ import {
   ChevronUp,
   Clock,
   Delete,
+  Flag,
   History,
   Lightbulb,
   RotateCcw,
   Star,
+  X,
   XCircle,
 } from 'lucide-react';
 import { FigmaAvatar, FigmaFlameIcon, ShareIcon } from './FigmaAssets';
 import { getHintForWord, isOneLetterDiff, isValidWord } from '../engine/wordLadder';
-import { broadcastTypingState, TURN_TIMEOUT_MS } from '../services/multiplayer';
+import {
+  BOT_PROPOSAL_DELAY_MS,
+  broadcastTypingState,
+  isBotPartner,
+  isWaitingPartner,
+  TURN_TIMEOUT_MS,
+} from '../services/multiplayer';
 import {
   fetchWordMeaning,
   getImmediateWordMeaning,
@@ -31,6 +39,8 @@ interface GameBoardScreenProps {
   onSubmitMove: (roomCode: string, nextWord: string) => void;
   onUndoMove: (roomCode: string) => void;
   onUseHint: (roomCode: string) => boolean;
+  onEnableBot: (roomCode: string) => void;
+  onEndGame: (roomCode: string) => void;
   onOpenVictory: (roomCode: string) => void;
 }
 
@@ -53,6 +63,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   onSubmitMove,
   onUndoMove,
   onUseHint,
+  onEnableBot,
+  onEndGame,
   onOpenVictory,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -68,6 +80,9 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   );
   const [draftMeaning, setDraftMeaning] = useState<WordMeaningResult | null>(null);
   const [currentWordMeaning, setCurrentWordMeaning] = useState<WordMeaningResult | null>(null);
+  const [showBotProposal, setShowBotProposal] = useState(false);
+  const [botProposalDismissed, setBotProposalDismissed] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
 
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -80,17 +95,32 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       room.hostPlayer.name === profile.name &&
       room.partnerPlayer.name !== profile.name);
   const partner = isHost ? room.partnerPlayer : room.hostPlayer;
+  const waitingForPartner = isWaitingPartner(partner.playerId);
+  const isBot = isBotPartner(partner.playerId);
   const isMyTurn = room.currentTurnPlayerId === profile.playerId;
   const canPlayManually = isMyTurn;
   const hasTurnCountdown =
     room.status === 'active' &&
     !room.autoPartnerEnabled &&
+    !waitingForPartner &&
+    !isBot &&
     partner.playerId !== profile.playerId;
   const remainingSeconds = hasTurnCountdown
     ? Math.max(0, Math.ceil(((room.turnStartedAt ?? room.startedAt) + TURN_TIMEOUT_MS - now) / 1000))
     : 0;
   const showPartnerCountdown = hasTurnCountdown && !isMyTurn && remainingSeconds <= 20;
   const isLowTime = hasTurnCountdown && remainingSeconds <= 10;
+
+  useEffect(() => {
+    if (!waitingForPartner || room.status !== 'active' || botProposalDismissed) {
+      setShowBotProposal(false);
+      return;
+    }
+    const elapsed = Math.max(0, Date.now() - room.startedAt);
+    const delay = Math.max(0, BOT_PROPOSAL_DELAY_MS - elapsed);
+    const t = window.setTimeout(() => setShowBotProposal(true), delay);
+    return () => window.clearTimeout(t);
+  }, [waitingForPartner, room.status, room.startedAt, botProposalDismissed]);
 
   const showToast = useCallback(
     (text: string, tone: 'error' | 'info' | 'hint' = 'info', duration = 2600) => {
@@ -239,7 +269,12 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       return;
     }
     if (!canPlayManually) {
-      showToast(`Patiente un instant, ${partner.name} joue son coup...`, 'info');
+      showToast(
+        waitingForPartner
+          ? 'Partage le lien ou attends qu’un partenaire rejoigne !'
+          : `Patiente un instant, ${partner.name} joue son coup...`,
+        'info'
+      );
       return;
     }
     if (selectedIndex === idx) {
@@ -256,7 +291,12 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     (char: string) => {
       if (room.status === 'completed') return;
       if (!canPlayManually) {
-        showToast(`C'est au tour de ${partner.name} !`, 'info');
+        showToast(
+          waitingForPartner
+            ? 'En attente d’un partenaire pour ce coup !'
+            : `C'est au tour de ${partner.name} !`,
+          'info'
+        );
         return;
       }
       const targetIdx = selectedIndex ?? 0;
@@ -470,6 +510,18 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               <div className="mx-2 mt-0.5 h-1 rounded-full bg-white/35" />
             </div>
           </div>
+
+          {room.status === 'active' && (
+            <button
+              type="button"
+              onClick={() => setShowEndConfirm(true)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:bg-black/5 hover:text-[var(--duo-red)]"
+              aria-label="Terminer la partie"
+              title="Terminer la partie"
+            >
+              <Flag className="h-[18px] w-[18px] stroke-[2.5]" />
+            </button>
+          )}
         </div>
 
         {/* Ligne 2 : Avatar & statut du tour à gauche / Flamme + Share à droite */}
@@ -478,13 +530,18 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             <FigmaAvatar
               avatarId={partner.avatarId}
               size={42}
-              ringColor={partner.color}
+              ringColor={waitingForPartner ? undefined : partner.color}
               ringGapColor="var(--bg-app)"
-              onlineDot={partner.online}
+              onlineDot={!waitingForPartner && partner.online}
+              empty={waitingForPartner}
+              isBot={isBot}
             />
             <div className="min-w-0 leading-tight">
-              <p className="truncate text-[17px] font-black" style={{ color: 'var(--text-primary)' }}>
-                {partner.name}
+              <p
+                className="truncate text-[17px] font-black"
+                style={{ color: waitingForPartner ? 'var(--text-muted)' : 'var(--text-primary)' }}
+              >
+                {waitingForPartner ? 'En attente...' : partner.name}
               </p>
               {room.status === 'completed' ? (
                 <button
@@ -517,6 +574,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                     </span>
                   )}
                 </div>
+              ) : waitingForPartner ? (
+                <p className="mt-0.5 truncate text-sm font-extrabold text-[var(--text-muted)]">
+                  En attente d&apos;un partenaire... · Coup {totalMovesUsed}/{room.optimalPar}
+                </p>
               ) : (
                 <div className="mt-0.5 flex items-center gap-1.5">
                   <p className="truncate text-sm font-extrabold text-[var(--duo-gold-text)]">
@@ -567,6 +628,43 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Proposition du bot Miyu après 20s sans partenaire */}
+        {waitingForPartner && showBotProposal && !botProposalDismissed && room.status === 'active' && (
+          <div className="duo-card animate-pop-in flex items-center justify-between gap-2.5 px-3.5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <FigmaAvatar avatarId={5} isBot size={38} ringColor="#ff9600" />
+              <div className="min-w-0 leading-tight">
+                <p
+                  className="truncate text-sm font-black"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Personne n&apos;a rejoint ?
+                </p>
+                <p className="truncate text-xs font-bold text-[var(--text-muted)]">
+                  Jouer avec Miyu (bot)
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onEnableBot(room.code)}
+                className="duo-btn duo-btn-green px-3.5 py-1.5 text-xs"
+              >
+                Jouer
+              </button>
+              <button
+                type="button"
+                onClick={() => setBotProposalDismissed(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-black/5"
+                aria-label="Ignorer la proposition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* CENTRE DU PLATEAU (Fidèle aux frames Figma 1:5 et 1:35) */}
@@ -597,7 +695,9 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           ) : (
             <p className="text-center text-sm font-bold text-[var(--text-muted)]">
               {!isMyTurn && room.status === 'active'
-                ? showPartnerCountdown
+                ? waitingForPartner
+                  ? 'Partage le lien ou attends qu’un partenaire rejoigne'
+                  : showPartnerCountdown
                   ? `En attente de ${partner.name} — tour auto dans ${remainingSeconds}s`
                   : `En attente du coup de ${partner.name} — clavier verrouillé`
                 : selectedIndex === null
@@ -922,9 +1022,68 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             ? `Valider ${draftWord}`
             : canPlayManually
             ? 'Valider'
+            : waitingForPartner
+            ? 'En attente d’un partenaire...'
             : `Tour de ${partner.name}...`}
         </button>
       </footer>
+
+      {/* Modale de confirmation pour terminer une partie sans trouver le mot */}
+      {showEndConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+          onClick={() => setShowEndConfirm(false)}
+        >
+          <div
+            className="duo-card animate-pop-in w-full max-w-sm p-5"
+            style={{ backgroundColor: 'var(--bg-surface)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>
+                Terminer la partie ?
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowEndConfirm(false)}
+                className="rounded-full p-1 text-[var(--text-muted)] hover:bg-black/5"
+                aria-label="Fermer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-1.5 text-sm font-bold text-[var(--text-muted)]">
+              La partie sera clôturée sans trouver{' '}
+              <span className="font-black text-[var(--text-primary)]">{room.targetWord}</span> et la
+              solution optimale sera affichée.
+            </p>
+            <div className="mt-5 flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowEndConfirm(false)}
+                className="duo-btn duo-btn-white flex-1 py-3.5 text-sm"
+              >
+                Continuer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEndConfirm(false);
+                  onEndGame(room.code);
+                }}
+                className="duo-btn flex-1 py-3.5 text-sm text-white"
+                style={{
+                  backgroundColor: 'var(--duo-red)',
+                  border: '2px solid var(--duo-red-shadow)',
+                  borderBottomWidth: 6,
+                }}
+              >
+                Terminer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -4,19 +4,24 @@ import {
   broadcastSupabaseTyping,
   CAROLE_PARTNER_ID,
   claimRemoteRoomByCode,
-  createCarolePresence,
+  createMiyuPresence,
   createOrUpsertRemoteRoom,
+  createWaitingPartnerPresence,
   ensureSupabaseSession,
   fetchProfileRemote,
   getSupabaseClient,
   hydrateLocalProfileFromRemote,
+  isBotPartner,
+  isWaitingPartner,
   loadRemoteRooms,
+  MIYU_BOT_ID,
   pushRemoteMove,
   type RoomUpdateMeta,
   STARTER_ROOM_CODE,
   subscribeSupabaseSync,
   updateRemoteRoomState,
   upsertProfileRemote,
+  WAITING_PARTNER_ID,
 } from './supabaseClient';
 import type {
   AvatarId,
@@ -34,8 +39,8 @@ const ROOMS_KEY = 'lets_turn_rooms_v1';
 const CHANNEL_NAME = 'lets_turn_realtime_v1';
 const STREAK_ZERO_MIGRATION_KEY = 'lets_turn_streak_zero_v1';
 
-const PARTNER_ID = CAROLE_PARTNER_ID;
 export const TURN_TIMEOUT_MS = 30_000;
+export const BOT_PROPOSAL_DELAY_MS = 20_000;
 
 export function passTurnIfExpired(
   room: GameRoom,
@@ -43,6 +48,13 @@ export function passTurnIfExpired(
   graceMs = 0
 ): GameRoom | null {
   if (room.status !== 'active') return null;
+  if (
+    room.autoPartnerEnabled ||
+    isBotPartner(room.partnerPlayer.playerId) ||
+    isWaitingPartner(room.partnerPlayer.playerId)
+  ) {
+    return null;
+  }
   if (room.hostPlayer.playerId === room.partnerPlayer.playerId) return null;
   const turnStart = room.turnStartedAt ?? room.startedAt;
   if (now - turnStart < TURN_TIMEOUT_MS + graceMs) return null;
@@ -157,11 +169,17 @@ export function isSupabaseConfigured(): boolean {
 }
 
 export {
+  createMiyuPresence,
   createOrUpsertRemoteRoom,
+  createWaitingPartnerPresence,
   ensureSupabaseSession,
+  isBotPartner,
+  isWaitingPartner,
+  MIYU_BOT_ID,
   pushRemoteMove,
   type RoomUpdateMeta,
   updateRemoteRoomState,
+  WAITING_PARTNER_ID,
 };
 
 function migrateLocalPlayerId(
@@ -266,15 +284,7 @@ export function createFigmaStarterRoom(host: PlayerProfile): GameRoom {
     'SLIM',
   ];
 
-  const partner: PlayerPresence = {
-    playerId: PARTNER_ID,
-    name: 'Carole',
-    avatarId: 5, // Personnage cheveux roses de la planche Figma
-    color: '#ff4b8b',
-    online: true,
-    isTyping: false,
-    lastSeen: Date.now(),
-  };
+  const partner: PlayerPresence = createMiyuPresence();
 
   const hostPresence: PlayerPresence = {
     playerId: host.playerId,
@@ -295,10 +305,10 @@ export function createFigmaStarterRoom(host: PlayerProfile): GameRoom {
     changedIndex: 3,
     fromChar: 'E',
     toChar: 'G',
-    playerId: PARTNER_ID,
-    playerName: 'Carole',
+    playerId: MIYU_BOT_ID,
+    playerName: 'Miyu',
     playerAvatarId: 5,
-    playerColor: '#ff4b8b',
+    playerColor: '#ff9600',
     timestamp: Date.now() - 95 * 1000,
   };
 
@@ -344,15 +354,37 @@ export function loadRooms(profile: PlayerProfile): Record<string, GameRoom> {
     const now = Date.now();
     const normalized: Record<string, GameRoom> = {};
     for (const [code, room] of Object.entries(parsed)) {
-      const autoPartnerEnabled = room.partnerPlayer.playerId === PARTNER_ID;
-      const lastMoveTs = room.moves[room.moves.length - 1]?.timestamp;
+      const isBot = isBotPartner(room.partnerPlayer.playerId);
+      const waiting = isWaitingPartner(room.partnerPlayer.playerId);
+      const autoPartnerEnabled = isBot;
+      const partnerPlayer = isBot
+        ? createMiyuPresence()
+        : waiting
+        ? createWaitingPartnerPresence()
+        : room.partnerPlayer;
+      const moves = isBot
+        ? room.moves.map((m) =>
+            m.playerId === CAROLE_PARTNER_ID
+              ? { ...m, playerId: MIYU_BOT_ID, playerName: 'Miyu', playerColor: '#ff9600' }
+              : m
+          )
+        : room.moves;
+      const currentTurnPlayerId =
+        isBot && room.currentTurnPlayerId === CAROLE_PARTNER_ID
+          ? MIYU_BOT_ID
+          : room.currentTurnPlayerId;
+
+      const lastMoveTs = moves[moves.length - 1]?.timestamp;
       const baseTurnStart = room.turnStartedAt ?? lastMoveTs ?? room.startedAt;
       let nextRoom: GameRoom = {
         ...room,
+        partnerPlayer,
+        moves,
+        currentTurnPlayerId,
         autoPartnerEnabled,
         turnStartedAt: baseTurnStart,
       };
-      if (nextRoom.status === 'active') {
+      if (nextRoom.status === 'active' && !isBot && !waiting) {
         if (nextRoom.currentTurnPlayerId !== profile.playerId) {
           const passed = passTurnIfExpired(nextRoom, now);
           if (passed) nextRoom = passed;
@@ -401,7 +433,7 @@ export function createNewRoom(
     lastSeen: Date.now(),
   };
 
-  const partnerPresence: PlayerPresence = createCarolePresence();
+  const partnerPresence: PlayerPresence = createWaitingPartnerPresence();
 
   return {
     code,
@@ -420,7 +452,7 @@ export function createNewRoom(
     turnStartedAt: Date.now(),
     hostPlayer: hostPresence,
     partnerPlayer: partnerPresence,
-    autoPartnerEnabled: true,
+    autoPartnerEnabled: false,
     status: 'active',
     startedAt: Date.now(),
   };
@@ -434,11 +466,17 @@ export function joinOrCreateRoomByCode(codeRaw: string, player: PlayerProfile): 
     // If another tab/device joins as player 2, attach them as partner if they have a different playerId
     if (
       existing.hostPlayer.playerId !== player.playerId &&
-      existing.partnerPlayer.playerId === PARTNER_ID
+      (isWaitingPartner(existing.partnerPlayer.playerId) ||
+        isBotPartner(existing.partnerPlayer.playerId))
     ) {
+      const nextTurn =
+        existing.currentTurnPlayerId === existing.hostPlayer.playerId
+          ? existing.hostPlayer.playerId
+          : player.playerId;
       const updated: GameRoom = {
         ...existing,
         autoPartnerEnabled: false,
+        currentTurnPlayerId: nextTurn,
         turnStartedAt: Date.now(),
         partnerPlayer: {
           playerId: player.playerId,

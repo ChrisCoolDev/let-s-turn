@@ -11,14 +11,19 @@ import {
   bootstrapSupabaseState,
   broadcastRoomUpdate,
   createInitialProfile,
+  createMiyuPresence,
   createNewRoom,
   createOrUpsertRemoteRoom,
+  createWaitingPartnerPresence,
   ensureSupabaseSession,
   generateRoomCode,
   generateUuid,
+  isBotPartner,
+  isWaitingPartner,
   joinRoomRemoteOrLocal,
   loadProfile,
   loadRooms,
+  MIYU_BOT_ID,
   passTurnIfExpired,
   pickSmartPartnerMove,
   pushRemoteMove,
@@ -28,6 +33,7 @@ import {
   saveRooms,
   subscribeRealtimeSync,
   updateRemoteRoomState,
+  WAITING_PARTNER_ID,
 } from './services/multiplayer';
 import type {
   AvatarId,
@@ -157,6 +163,31 @@ export function App() {
     }
     rewardedRoomsRef.current.add(rewardKey);
 
+    const isAbandoned = Boolean(
+      completedRoom.abandoned || completedRoom.currentWord !== completedRoom.targetWord
+    );
+
+    if (isAbandoned) {
+      if (completedRoom.moves.length > 0) {
+        const updatedProfile: PlayerProfile = {
+          ...activeProfile,
+          gamesPlayed: activeProfile.gamesPlayed + 1,
+        };
+        profileRef.current = updatedProfile;
+        saveProfile(updatedProfile);
+        setProfile(updatedProfile);
+      }
+      setLastVictoryMeta({
+        roomCode: completedRoom.code,
+        newlyUnlockedBadges: [],
+        earnedXp: 0,
+        earnedStars: 0,
+      });
+      setActiveRoomCode(completedRoom.code);
+      setScreen('victory');
+      return;
+    }
+
     const actualSteps = completedRoom.moves.length + completedRoom.undoPenaltyCount;
     const durationSeconds = completedRoom.completedAt
       ? Math.max(1, Math.round((completedRoom.completedAt - completedRoom.startedAt) / 1000))
@@ -284,7 +315,28 @@ export function App() {
 
         let mergedRoom = updatedRoom;
         if (existing) {
-          if (existing.autoPartnerEnabled && !updatedRoom.autoPartnerEnabled) {
+          const keepMiyuBot =
+            isBotPartner(existing.partnerPlayer.playerId) &&
+            isWaitingPartner(updatedRoom.partnerPlayer.playerId);
+          const friendJustJoined =
+            isWaitingPartner(existing.partnerPlayer.playerId) &&
+            !isWaitingPartner(updatedRoom.partnerPlayer.playerId) &&
+            !isBotPartner(updatedRoom.partnerPlayer.playerId);
+
+          if (keepMiyuBot) {
+            mergedRoom = {
+              ...updatedRoom,
+              partnerPlayer: existing.partnerPlayer,
+              autoPartnerEnabled: true,
+              currentTurnPlayerId:
+                updatedRoom.currentTurnPlayerId === WAITING_PARTNER_ID
+                  ? MIYU_BOT_ID
+                  : updatedRoom.currentTurnPlayerId,
+            };
+          } else if (
+            friendJustJoined ||
+            (existing.autoPartnerEnabled && !updatedRoom.autoPartnerEnabled)
+          ) {
             mergedRoom = { ...updatedRoom, turnStartedAt: Date.now() };
           } else if (
             existing.currentTurnPlayerId !== updatedRoom.currentTurnPlayerId ||
@@ -303,6 +355,14 @@ export function App() {
               lastTurnPass: updatedRoom.lastTurnPass ?? existing.lastTurnPass,
             };
           }
+
+          if (mergedRoom.abandoned) {
+            mergedRoom = {
+              ...mergedRoom,
+              abandonedByPlayerId: mergedRoom.abandonedByPlayerId ?? existing.abandonedByPlayerId,
+              abandonedByName: mergedRoom.abandonedByName ?? existing.abandonedByName,
+            };
+          }
         }
 
         const next = { ...prev, [mergedRoom.code]: mergedRoom };
@@ -312,7 +372,11 @@ export function App() {
 
         if (mergedRoom.status === 'completed' && existing?.status !== 'completed') {
           if (activeRoomCodeRef.current === mergedRoom.code || screenRef.current === 'hub') {
-            window.setTimeout(() => completeRoomVictoryRef.current(mergedRoom), 380);
+            if (mergedRoom.abandoned) {
+              completeRoomVictoryRef.current(mergedRoom);
+            } else {
+              window.setTimeout(() => completeRoomVictoryRef.current(mergedRoom), 380);
+            }
           }
         }
 
@@ -412,7 +476,7 @@ export function App() {
     }
   }, []);
 
-  // Automatic smart partner response (Carole) when it's her turn & autoPartnerEnabled is true
+  // Automatic smart partner response (Miyu) when it's her turn & autoPartnerEnabled is true
   useEffect(() => {
     if (!profile || !activeRoomCode || screen !== 'board') return;
     const room = rooms[activeRoomCode];
@@ -421,10 +485,11 @@ export function App() {
 
     const isHost = room.hostPlayer.playerId === profile.playerId;
     const partner = isHost ? room.partnerPlayer : room.hostPlayer;
+    if (!isBotPartner(partner.playerId)) return;
 
     if (partnerTimerRef.current) window.clearTimeout(partnerTimerRef.current);
 
-    // Phase 1: show "Carole tape..."
+    // Phase 1: show "Miyu tape..."
     const typingTimer = window.setTimeout(() => {
       setRooms((prev) => {
         const cur = prev[activeRoomCode];
@@ -439,7 +504,7 @@ export function App() {
       });
     }, 450);
 
-    // Phase 2: Carole executes optimal BFS step
+    // Phase 2: Miyu executes optimal BFS step
     partnerTimerRef.current = window.setTimeout(() => {
       setRooms((prev) => {
         const cur = prev[activeRoomCode];
@@ -472,7 +537,7 @@ export function App() {
 
         requestPushPermissionAndNotify(
           `${partner.name} a joué ${move.word} !`,
-          `Elle a changé ${move.fromChar} en ${move.toChar}. À ton tour !`
+          `${partner.name} a changé ${move.fromChar} en ${move.toChar}. À ton tour !`
         );
 
         if (reachedTarget) {
@@ -494,7 +559,9 @@ export function App() {
       Object.values(rooms).some(
         (r) =>
           r.status === 'active' &&
-          (!r.autoPartnerEnabled || r.currentTurnPlayerId !== profile.playerId)
+          !r.autoPartnerEnabled &&
+          !isBotPartner(r.partnerPlayer.playerId) &&
+          !isWaitingPartner(r.partnerPlayer.playerId)
       )
   );
 
@@ -509,7 +576,11 @@ export function App() {
         const next = { ...prev };
         for (const room of Object.values(prev)) {
           if (room.status !== 'active') continue;
-          if (room.autoPartnerEnabled && room.currentTurnPlayerId === profile.playerId) {
+          if (
+            room.autoPartnerEnabled ||
+            isBotPartner(room.partnerPlayer.playerId) ||
+            isWaitingPartner(room.partnerPlayer.playerId)
+          ) {
             continue;
           }
           // Waiting player handles primary expiry at 30s; active player yields after +1.5s fallback
@@ -691,6 +762,13 @@ export function App() {
       newCode = `${pair.startWord.slice(0, 4).toUpperCase()}-${Math.floor(100 + Math.random() * 899)}`;
     }
 
+    const nextPartner = isWaitingPartner(otherPlayer.playerId)
+      ? createWaitingPartnerPresence()
+      : isBotPartner(otherPlayer.playerId)
+      ? createMiyuPresence()
+      : { ...otherPlayer, isTyping: false };
+    const nextAutoBot = isBotPartner(nextPartner.playerId);
+
     const freshRoom: GameRoom = {
       code: newCode,
       language: oldRoom.language,
@@ -716,12 +794,15 @@ export function App() {
         isTyping: false,
         lastSeen: Date.now(),
       },
-      partnerPlayer: { ...otherPlayer, isTyping: false },
-      autoPartnerEnabled: oldRoom.autoPartnerEnabled,
+      partnerPlayer: nextPartner,
+      autoPartnerEnabled: nextAutoBot,
       status: 'active',
       startedAt: Date.now(),
       completedAt: undefined,
       winnerPlayerId: undefined,
+      abandoned: undefined,
+      abandonedByPlayerId: undefined,
+      abandonedByName: undefined,
     };
 
     const next = { ...roomsRef.current, [newCode]: freshRoom };
@@ -733,6 +814,52 @@ export function App() {
     setActiveRoomCode(newCode);
     setScreen('board');
   };
+
+  const handleEnableBot = useCallback((roomCode: string) => {
+    const activeProfile = profileRef.current;
+    const room = roomsRef.current[roomCode];
+    if (!activeProfile || !room || room.status !== 'active') return;
+    if (!isWaitingPartner(room.partnerPlayer.playerId)) return;
+
+    const updated: GameRoom = {
+      ...room,
+      partnerPlayer: createMiyuPresence(),
+      autoPartnerEnabled: true,
+      currentTurnPlayerId:
+        room.currentTurnPlayerId === WAITING_PARTNER_ID ? MIYU_BOT_ID : room.currentTurnPlayerId,
+      turnStartedAt: Date.now(),
+    };
+    const next = { ...roomsRef.current, [roomCode]: updated };
+    roomsRef.current = next;
+    saveRooms(next);
+    setRooms(next);
+  }, []);
+
+  const handleEndGame = useCallback((roomCode: string) => {
+    const activeProfile = profileRef.current;
+    const room = roomsRef.current[roomCode];
+    if (!activeProfile || !room || room.status === 'completed') return;
+
+    const endedRoom: GameRoom = {
+      ...room,
+      status: 'completed',
+      completedAt: Date.now(),
+      winnerPlayerId: undefined,
+      abandoned: true,
+      abandonedByPlayerId: activeProfile.playerId,
+      abandonedByName: activeProfile.name,
+      hostPlayer: { ...room.hostPlayer, isTyping: false },
+      partnerPlayer: { ...room.partnerPlayer, isTyping: false },
+    };
+
+    const next = { ...roomsRef.current, [roomCode]: endedRoom };
+    roomsRef.current = next;
+    saveRooms(next);
+    setRooms(next);
+    broadcastRoomUpdate(endedRoom, activeProfile.playerId);
+    void updateRemoteRoomState(endedRoom);
+    completeRoomVictoryRef.current(endedRoom);
+  }, []);
 
   const handleBuyOrActivateTheme = (themeId: ThemeId, priceStars: number): boolean => {
     if (!profile) return false;
@@ -777,10 +904,11 @@ export function App() {
 
   useEffect(() => {
     if (screen === 'board' && activeRoom && activeRoom.status === 'completed') {
-      const t = window.setTimeout(() => completeRoomVictoryRef.current(activeRoom), 380);
+      const delay = activeRoom.abandoned ? 0 : 380;
+      const t = window.setTimeout(() => completeRoomVictoryRef.current(activeRoom), delay);
       return () => window.clearTimeout(t);
     }
-  }, [screen, activeRoom?.code, activeRoom?.status]);
+  }, [screen, activeRoom?.code, activeRoom?.status, activeRoom?.abandoned]);
 
   if (!profile) {
     return (
@@ -819,6 +947,8 @@ export function App() {
           onSubmitMove={handleSubmitMove}
           onUndoMove={handleUndoMove}
           onUseHint={handleUseHint}
+          onEnableBot={handleEnableBot}
+          onEndGame={handleEndGame}
           onOpenVictory={(code) => {
             setActiveRoomCode(code);
             setScreen('victory');

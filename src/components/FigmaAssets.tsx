@@ -247,6 +247,10 @@ interface AvatarProps {
   /** Couleur du liseré séparant la photo de l'anneau extérieur */
   ringGapColor?: string;
   onlineDot?: boolean;
+  /** Emplacement vide tant qu'aucun partenaire n'a rejoint le salon */
+  empty?: boolean;
+  /** Avatar dédié du bot Miyu */
+  isBot?: boolean;
   className?: string;
 }
 
@@ -274,12 +278,50 @@ export const FigmaAvatar: React.FC<AvatarProps> = ({
   ringColor,
   ringGapColor = 'var(--bg-surface)',
   onlineDot = false,
+  empty = false,
+  isBot = false,
   className = '',
 }) => {
-  const tint = ringColor ?? AVATAR_ACCENTS[avatarId];
+  if (empty) {
+    const iconSize = Math.max(18, Math.round(size * 0.46));
+    return (
+      <div
+        className={`relative inline-flex shrink-0 items-center justify-center rounded-full border-2 border-dashed ${className}`}
+        style={{
+          width: size,
+          height: size,
+          backgroundColor: 'var(--bg-muted)',
+          borderColor: 'var(--border-tile)',
+          color: 'var(--text-muted)',
+        }}
+        aria-label="Partenaire en attente"
+      >
+        <svg
+          width={iconSize}
+          height={iconSize}
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="8.5" r="3.75" stroke="currentColor" strokeWidth="2" />
+          <path
+            d="M5.5 19.25C6.4 16.4 8.95 14.75 12 14.75C15.05 14.75 17.6 16.4 18.5 19.25"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  const tint = isBot ? '#ff9600' : ringColor ?? AVATAR_ACCENTS[avatarId];
   const gap = size >= 48 ? 2 : 1.5;
   const ring = size >= 48 ? 2.5 : 2;
   const dotSize = Math.max(10, Math.round(size * 0.27));
+  const imgSrc = isBot ? '/avatars/avatar-miyu.png' : `/avatars/avatar-${avatarId}.png`;
+  const imgAlt = isBot ? 'Miyu' : AVATAR_LABELS[avatarId];
 
   return (
     <div
@@ -301,8 +343,8 @@ export const FigmaAvatar: React.FC<AvatarProps> = ({
         }}
       >
         <img
-          src={`/avatars/avatar-${avatarId}.png`}
-          alt={AVATAR_LABELS[avatarId]}
+          src={imgSrc}
+          alt={imgAlt}
           className="h-full w-full object-cover"
           draggable={false}
         />

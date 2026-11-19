@@ -100,6 +100,9 @@ export interface GameRoom {
   startedAt: number;
   completedAt?: number;
   winnerPlayerId?: string;
+  abandoned?: boolean;
+  abandonedByPlayerId?: string;
+  abandonedByName?: string;
 }
 
 export interface BadgeDefinition {
