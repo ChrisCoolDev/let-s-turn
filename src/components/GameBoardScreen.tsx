@@ -22,8 +22,7 @@ import { isPlural, useI18n } from '../i18n';
 import {
   BOT_PROPOSAL_DELAY_MS,
   broadcastTypingState,
-  isBotPartner,
-  isWaitingPartner,
+  resolveRoomParticipants,
   TURN_TIMEOUT_MS,
 } from '../services/multiplayer';
 import {
@@ -91,26 +90,23 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   const toastTimerRef = useRef<number | null>(null);
   const seenTurnPassIdRef = useRef<string | null>(null);
 
-  const isHost =
-    room.hostPlayer.playerId === profile.playerId ||
-    (room.partnerPlayer.playerId !== profile.playerId &&
-      room.hostPlayer.name === profile.name &&
-      room.partnerPlayer.name !== profile.name);
-  const partner = isHost ? room.partnerPlayer : room.hostPlayer;
-  const waitingForPartner = isWaitingPartner(partner.playerId);
-  const isBot = isBotPartner(partner.playerId);
-  const isMyTurn = room.currentTurnPlayerId === profile.playerId;
+  const {
+    me,
+    partner,
+    waitingForPartner,
+    isBot,
+    isMyTurn,
+  } = resolveRoomParticipants(room, profile);
   const canPlayManually = isMyTurn;
   const hasTurnCountdown =
     room.status === 'active' &&
-    !room.autoPartnerEnabled &&
     !waitingForPartner &&
-    !isBot &&
-    partner.playerId !== profile.playerId;
+    partner.playerId !== profile.playerId &&
+    partner.playerId !== me.playerId;
   const remainingSeconds = hasTurnCountdown
     ? Math.max(0, Math.ceil(((room.turnStartedAt ?? room.startedAt) + TURN_TIMEOUT_MS - now) / 1000))
     : 0;
-  const showPartnerCountdown = hasTurnCountdown && !isMyTurn && remainingSeconds <= 20;
+  const showPartnerCountdown = hasTurnCountdown && !isMyTurn && (isBot || remainingSeconds <= 20);
   const isLowTime = hasTurnCountdown && remainingSeconds <= 10;
 
   useEffect(() => {
@@ -148,20 +144,29 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     seenTurnPassIdRef.current = pass.id;
     if (Date.now() - pass.timestamp > 15_000) return;
 
-    if (pass.toPlayerId === profile.playerId) {
+    const passedToMe = pass.toPlayerId === me.playerId || pass.toPlayerId === profile.playerId;
+    if (passedToMe) {
+      const fromIsOwnName =
+        pass.fromPlayerName === profile.name || pass.fromPlayerName === me.name;
       const otherName =
-        pass.fromPlayerId !== profile.playerId && pass.fromPlayerName !== profile.name
+        pass.fromPlayerId !== profile.playerId &&
+        pass.fromPlayerId !== me.playerId &&
+        !fromIsOwnName
           ? pass.fromPlayerName
           : partner.name;
       showToast(t('board.toastTurnTimeoutYou', { name: otherName }), 'hint', 3400);
     } else {
+      const toIsOwnName =
+        pass.toPlayerName === profile.name || pass.toPlayerName === me.name;
       const nextName =
-        pass.toPlayerId !== profile.playerId && pass.toPlayerName !== profile.name
+        pass.toPlayerId !== profile.playerId &&
+        pass.toPlayerId !== me.playerId &&
+        !toIsOwnName
           ? pass.toPlayerName
           : partner.name;
       showToast(t('board.toastTurnTimeoutOther', { name: nextName }), 'info', 3400);
     }
-  }, [room.lastTurnPass, profile.playerId, profile.name, partner.name, showToast, t]);
+  }, [room.lastTurnPass, profile.playerId, profile.name, me.playerId, me.name, partner.name, showToast, t]);
 
   // Reset local draft whenever the currentWord changes
   useEffect(() => {
@@ -479,7 +484,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
   // Conversational history text matching Figma Frame 2 (node 2:16)
   const formatMoveSentence = (move: WordMove) => {
-    const isMe = move.playerId === profile.playerId;
+    const isMe = move.playerId === profile.playerId || move.playerId === me.playerId;
     if (move.isUndoPenalty) {
       return isMe ? t('board.moveMeUndo') : t('board.moveOtherUndo', { name: move.playerName });
     }
@@ -905,7 +910,9 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                       />
                       <span className="text-[var(--text-muted)]">
                         #{stepIdx + 1}{' '}
-                        {move.playerId === profile.playerId ? t('common.you') : move.playerName}
+                        {move.playerId === profile.playerId || move.playerId === me.playerId
+                          ? t('common.you')
+                          : move.playerName}
                       </span>
                     </span>
                     <span className="font-black tracking-widest">

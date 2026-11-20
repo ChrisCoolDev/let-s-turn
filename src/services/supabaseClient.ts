@@ -29,7 +29,13 @@ export function isBotPartner(playerId: string | null | undefined): boolean {
 export interface RoomUpdateMeta {
   rematchFromCode?: string;
   isInsert?: boolean;
+  source?: 'broadcast' | 'postgres' | 'local';
 }
+
+export type ClaimRemoteRoomResult =
+  | { status: 'ok'; room: GameRoom }
+  | { status: 'not_found' }
+  | { status: 'full' };
 
 interface DbProfileRow {
   id: string;
@@ -253,6 +259,36 @@ export async function upsertProfileRemote(profile: PlayerProfile): Promise<boole
   return true;
 }
 
+async function ensureHostProfileRow(uid: string, host: PlayerPresence): Promise<void> {
+  if (profileCache.has(uid)) return;
+  const existing = await fetchProfileRemote(uid);
+  if (existing) return;
+
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  const { data, error } = await client
+    .from('profiles')
+    .upsert(
+      {
+        id: uid,
+        name: host.name,
+        avatar_id: host.avatarId,
+        color: host.color,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    )
+    .select(
+      'id, name, avatar_id, color, xp, stars, streak, last_played_date, unlocked_badges, unlocked_themes, active_theme'
+    )
+    .maybeSingle<DbProfileRow>();
+
+  if (!error && data) {
+    profileCache.set(uid, data);
+  }
+}
+
 export function hydrateLocalProfileFromRemote(
   remote: DbProfileRow
 ): PlayerProfile {
@@ -391,9 +427,14 @@ async function assembleGameRoom(
   const completedAt = dbRoom.completed_at ? Date.parse(dbRoom.completed_at) : undefined;
   const abandoned = dbRoom.status === 'completed' && dbRoom.current_word !== dbRoom.target_word;
 
+  const resolvedTurnId =
+    keepMiyuBot && dbRoom.current_turn_player_id === WAITING_PARTNER_ID
+      ? MIYU_BOT_ID
+      : dbRoom.current_turn_player_id;
+
   const unchangedTurn =
     existingLocal &&
-    existingLocal.currentTurnPlayerId === dbRoom.current_turn_player_id &&
+    existingLocal.currentTurnPlayerId === resolvedTurnId &&
     existingLocal.currentWord === dbRoom.current_word &&
     existingLocal.autoPartnerEnabled === autoPartnerEnabled;
 
@@ -410,7 +451,7 @@ async function assembleGameRoom(
     moves,
     undoPenaltyCount: dbRoom.undo_penalty_count,
     hintsUsed: dbRoom.hints_used,
-    currentTurnPlayerId: dbRoom.current_turn_player_id,
+    currentTurnPlayerId: resolvedTurnId,
     turnStartedAt: unchangedTurn
       ? existingLocal.turnStartedAt
       : moves[moves.length - 1]?.timestamp ?? startedAt,
@@ -495,38 +536,41 @@ export async function createOrUpsertRemoteRoom(room: GameRoom): Promise<boolean>
       return false;
     }
 
+    await ensureHostProfileRow(uid, room.hostPlayer);
+
     const partnerId =
       isValidUuid(room.partnerPlayer.playerId) && !isWaitingPartner(room.partnerPlayer.playerId)
         ? room.partnerPlayer.playerId
         : null;
     const dbTurnId = isValidUuid(room.currentTurnPlayerId) ? room.currentTurnPlayerId : uid;
 
-    const { error } = await client.from('rooms').upsert(
-      {
-        code: room.code,
-        language: room.language,
-        word_length: room.wordLength,
-        mode: room.mode,
-        start_word: room.startWord,
-        target_word: room.targetWord,
-        current_word: room.currentWord,
-        optimal_par: room.optimalPar,
-        optimal_path: room.optimalPath,
-        host_player_id: room.hostPlayer.playerId,
-        partner_player_id: partnerId,
-        current_turn_player_id: dbTurnId,
-        undo_penalty_count: room.undoPenaltyCount,
-        hints_used: room.hintsUsed,
-        status: room.status,
-        winner_player_id: isValidUuid(room.winnerPlayerId) ? room.winnerPlayerId : null,
-        started_at: new Date(room.startedAt).toISOString(),
-        completed_at: room.completedAt ? new Date(room.completedAt).toISOString() : null,
-      },
-      { onConflict: 'code' }
-    );
+    const { error } = await client.from('rooms').insert({
+      code: room.code,
+      language: room.language,
+      word_length: room.wordLength,
+      mode: room.mode,
+      start_word: room.startWord,
+      target_word: room.targetWord,
+      current_word: room.currentWord,
+      optimal_par: room.optimalPar,
+      optimal_path: room.optimalPath,
+      host_player_id: room.hostPlayer.playerId,
+      partner_player_id: partnerId,
+      current_turn_player_id: dbTurnId,
+      undo_penalty_count: room.undoPenaltyCount,
+      hints_used: room.hintsUsed,
+      status: room.status,
+      winner_player_id: isValidUuid(room.winnerPlayerId) ? room.winnerPlayerId : null,
+      started_at: new Date(room.startedAt).toISOString(),
+      completed_at: room.completedAt ? new Date(room.completedAt).toISOString() : null,
+    });
 
     if (error) {
-      console.warn('[Supabase] Failed to save room:', error.message);
+      if (error.code === '23505') {
+        console.warn('[Supabase] Room code collision, insert skipped:', room.code);
+      } else {
+        console.warn('[Supabase] Failed to save room:', error.message);
+      }
       return false;
     }
     return true;
@@ -545,15 +589,15 @@ export async function createOrUpsertRemoteRoom(room: GameRoom): Promise<boolean>
 export async function claimRemoteRoomByCode(
   code: string,
   player: PlayerProfile
-): Promise<GameRoom | null> {
+): Promise<ClaimRemoteRoomResult> {
   const cleanCode = code.trim().toUpperCase();
-  if (!cleanCode || cleanCode === STARTER_ROOM_CODE) return null;
+  if (!cleanCode || cleanCode === STARTER_ROOM_CODE) return { status: 'not_found' };
 
   const client = getSupabaseClient();
-  if (!client) return null;
+  if (!client) return { status: 'not_found' };
 
   const uid = await ensureSupabaseSession();
-  if (!uid) return null;
+  if (!uid) return { status: 'not_found' };
 
   const { data: dbRoom, error } = await client
     .from('rooms')
@@ -561,7 +605,15 @@ export async function claimRemoteRoomByCode(
     .eq('code', cleanCode)
     .maybeSingle<DbRoomRow>();
 
-  if (error || !dbRoom) return null;
+  if (error || !dbRoom) return { status: 'not_found' };
+
+  if (
+    dbRoom.host_player_id !== uid &&
+    dbRoom.partner_player_id &&
+    dbRoom.partner_player_id !== uid
+  ) {
+    return { status: 'full' };
+  }
 
   let resolvedRoom = dbRoom;
   if (dbRoom.host_player_id !== uid && !dbRoom.partner_player_id) {
@@ -584,13 +636,27 @@ export async function claimRemoteRoomByCode(
 
     if (!updateErr && updatedRow) {
       resolvedRoom = updatedRow;
+    } else {
+      const { data: refetched } = await client
+        .from('rooms')
+        .select('*')
+        .eq('code', cleanCode)
+        .maybeSingle<DbRoomRow>();
+      if (!refetched) return { status: 'not_found' };
+      if (refetched.host_player_id !== uid && refetched.partner_player_id !== uid) {
+        return { status: 'full' };
+      }
+      resolvedRoom = refetched;
     }
   }
 
   const assembled = await assembleGameRoom(resolvedRoom);
   return {
-    ...assembled,
-    turnStartedAt: Date.now(),
+    status: 'ok',
+    room: {
+      ...assembled,
+      turnStartedAt: Date.now(),
+    },
   };
 }
 
@@ -611,27 +677,33 @@ export async function updateRemoteRoomState(room: GameRoom): Promise<void> {
       : null;
   const dbTurnId = isValidUuid(room.currentTurnPlayerId)
     ? room.currentTurnPlayerId
+    : isBotPartner(room.currentTurnPlayerId)
+    ? partnerId ?? WAITING_PARTNER_ID
     : room.hostPlayer.playerId;
 
   if (!isValidUuid(dbTurnId)) return;
 
+  const updatePayload: Record<string, unknown> = {
+    start_word: room.startWord,
+    target_word: room.targetWord,
+    optimal_par: room.optimalPar,
+    optimal_path: room.optimalPath,
+    current_word: room.currentWord,
+    current_turn_player_id: dbTurnId,
+    undo_penalty_count: room.undoPenaltyCount,
+    hints_used: room.hintsUsed,
+    status: room.status,
+    winner_player_id: isValidUuid(room.winnerPlayerId) ? room.winnerPlayerId : null,
+    started_at: new Date(room.startedAt).toISOString(),
+    completed_at: room.completedAt ? new Date(room.completedAt).toISOString() : null,
+  };
+  if (partnerId !== null) {
+    updatePayload.partner_player_id = partnerId;
+  }
+
   const { error } = await client
     .from('rooms')
-    .update({
-      start_word: room.startWord,
-      target_word: room.targetWord,
-      optimal_par: room.optimalPar,
-      optimal_path: room.optimalPath,
-      current_word: room.currentWord,
-      partner_player_id: partnerId,
-      current_turn_player_id: dbTurnId,
-      undo_penalty_count: room.undoPenaltyCount,
-      hints_used: room.hintsUsed,
-      status: room.status,
-      winner_player_id: isValidUuid(room.winnerPlayerId) ? room.winnerPlayerId : null,
-      started_at: new Date(room.startedAt).toISOString(),
-      completed_at: room.completedAt ? new Date(room.completedAt).toISOString() : null,
-    })
+    .update(updatePayload)
     .eq('code', room.code);
 
   if (error) {
@@ -704,9 +776,9 @@ function ensureRealtimeSubscription(playerId: string): void {
       if (!data?.room) return;
       const r = data.room;
       if (r.hostPlayer.playerId !== playerId && r.partnerPlayer.playerId !== playerId) return;
-      const meta: RoomUpdateMeta | undefined = data.rematchFromCode
-        ? { rematchFromCode: data.rematchFromCode }
-        : undefined;
+      const meta: RoomUpdateMeta = data.rematchFromCode
+        ? { rematchFromCode: data.rematchFromCode, source: 'broadcast' }
+        : { source: 'broadcast' };
       roomListeners.forEach((cb) => cb(r, meta));
     })
     .on('broadcast', { event: 'typing_state' }, ({ payload }) => {
@@ -731,7 +803,7 @@ function ensureRealtimeSubscription(playerId: string): void {
               ...assembled,
               turnStartedAt: Date.now(),
             },
-            { isInsert }
+            { isInsert, source: 'postgres' }
           )
         );
       }

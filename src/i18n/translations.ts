@@ -60,6 +60,7 @@ export const fr = {
   'hub.joinError': 'Entre un code valide (ex : WINE-42 ou 4 lettres)',
   'hub.tryDemo': 'Tester WINE-42',
   'hub.joinSubmit': 'Rejoindre',
+  'hub.roomFull': 'Ce salon est déjà complet (2 joueurs).',
 
   'createDuel.titleSetup': 'Configurer un duel',
   'createDuel.titleReady': 'Salon prêt',
@@ -352,6 +353,7 @@ export const en: Record<TranslationKey, string> = {
   'hub.joinError': 'Enter a valid code (e.g. WINE-42 or 4 letters)',
   'hub.tryDemo': 'Try WINE-42',
   'hub.joinSubmit': 'Join',
+  'hub.roomFull': 'This room is already full (2 players).',
 
   'createDuel.titleSetup': 'Set up a duel',
   'createDuel.titleReady': 'Room ready',

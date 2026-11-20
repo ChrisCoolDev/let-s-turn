@@ -78,7 +78,12 @@ export function isOneLetterDiff(wordA: string, wordB: string): DiffResult {
   };
 }
 
-function bfsPath(start: string, target: string, vocab: Set<string>): string[] | null {
+function bfsPath(
+  start: string,
+  target: string,
+  vocab: Set<string>,
+  excludedWords?: Set<string>
+): string[] | null {
   if (start === target) return [start];
   if (!vocab.has(start) || !vocab.has(target)) return null;
 
@@ -99,6 +104,9 @@ function bfsPath(start: string, target: string, vocab: Set<string>): string[] | 
         if (ch === origChar) continue;
         const next = prefix + ch + suffix;
         if (!vocab.has(next) || parent.has(next)) continue;
+        if (excludedWords && next !== target && next !== start && excludedWords.has(next)) {
+          continue;
+        }
 
         parent.set(next, current);
         if (next === target) {
@@ -116,6 +124,40 @@ function bfsPath(start: string, target: string, vocab: Set<string>): string[] | 
   }
 
   return null;
+}
+
+export function findValidNeighbors(word: string, lang: Language): string[] {
+  const clean = word.trim().toUpperCase();
+  if (clean.length !== 4 && clean.length !== 5) return [];
+  const vocab = getDictionarySet(lang, clean.length as WordLength);
+  return findNeighbors(clean, vocab);
+}
+
+export function findShortestPathExcluding(
+  startWord: string,
+  targetWord: string,
+  lang: Language,
+  excludedWords: Set<string>
+): string[] | null {
+  const start = startWord.trim().toUpperCase();
+  const target = targetWord.trim().toUpperCase();
+  if (start.length !== target.length || (start.length !== 4 && start.length !== 5)) {
+    return null;
+  }
+  const length = start.length as WordLength;
+
+  if (lang === 'EN' && length === 4) {
+    const commonVocab = new Set(EN_4_COMMON_SET);
+    commonVocab.add(start);
+    commonVocab.add(target);
+    const commonPath = bfsPath(start, target, commonVocab, excludedWords);
+    if (commonPath) return commonPath;
+  }
+
+  const fullVocab = new Set(getDictionarySet(lang, length));
+  fullVocab.add(start);
+  fullVocab.add(target);
+  return bfsPath(start, target, fullVocab, excludedWords);
 }
 
 export function findShortestPath(
@@ -169,7 +211,7 @@ interface CuratedPair {
   target: string;
 }
 
-const CURATED_PAIRS: Record<`${Language}_${WordLength}`, CuratedPair[]> = {
+export const CURATED_PAIRS: Record<`${Language}_${WordLength}`, CuratedPair[]> = {
   EN_4: [
     { start: 'WINE', target: 'SLIM' },
     { start: 'COLD', target: 'WARM' },
@@ -184,6 +226,63 @@ const CURATED_PAIRS: Record<`${Language}_${WordLength}`, CuratedPair[]> = {
     { start: 'HEAD', target: 'FOOT' },
     { start: 'MILK', target: 'CAKE' },
     { start: 'WORK', target: 'HOME' },
+    { start: 'BIRD', target: 'WING' },
+    { start: 'WIND', target: 'GALE' },
+    { start: 'KING', target: 'DUKE' },
+    { start: 'HAND', target: 'FIST' },
+    { start: 'TIME', target: 'HOUR' },
+    { start: 'ROSE', target: 'LILY' },
+    { start: 'SEED', target: 'ROOT' },
+    { start: 'LOVE', target: 'HATE' },
+    { start: 'HOPE', target: 'WISH' },
+    { start: 'SAND', target: 'DUNE' },
+    { start: 'WAVE', target: 'TIDE' },
+    { start: 'CITY', target: 'TOWN' },
+    { start: 'ROAD', target: 'PATH' },
+    { start: 'DOOR', target: 'GATE' },
+    { start: 'DAWN', target: 'DUSK' },
+    { start: 'SOFT', target: 'HARD' },
+    { start: 'SLOW', target: 'FAST' },
+    { start: 'POOR', target: 'RICH' },
+    { start: 'WILD', target: 'TAME' },
+    { start: 'GRAY', target: 'CYAN' },
+    { start: 'TEAL', target: 'NAVY' },
+    { start: 'RUBY', target: 'JADE' },
+    { start: 'SOUP', target: 'MEAL' },
+    { start: 'RICE', target: 'CORN' },
+    { start: 'PEAR', target: 'PLUM' },
+    { start: 'MINT', target: 'SALT' },
+    { start: 'FROG', target: 'TOAD' },
+    { start: 'HAWK', target: 'DOVE' },
+    { start: 'DUCK', target: 'SWAN' },
+    { start: 'SONG', target: 'TUNE' },
+    { start: 'NOTE', target: 'STEM' },
+    { start: 'FILM', target: 'SHOW' },
+    { start: 'HERO', target: 'FOOL' },
+    { start: 'GOLD', target: 'SILK' },
+    { start: 'WOOD', target: 'BARK' },
+    { start: 'ROCK', target: 'PEAK' },
+    { start: 'LAKE', target: 'POND' },
+    { start: 'SHIP', target: 'SAIL' },
+    { start: 'CART', target: 'MILE' },
+    { start: 'RING', target: 'BELL' },
+    { start: 'BOOT', target: 'SHOE' },
+    { start: 'COAT', target: 'VEST' },
+    { start: 'DRUM', target: 'HORN' },
+    { start: 'QUIZ', target: 'TEST' },
+    { start: 'FACT', target: 'MYTH' },
+    { start: 'MIND', target: 'SOUL' },
+    { start: 'GIFT', target: 'CARD' },
+    { start: 'CREW', target: 'TEAM' },
+    { start: 'BANK', target: 'COIN' },
+    { start: 'DEBT', target: 'LOAN' },
+    { start: 'JUMP', target: 'LEAP' },
+    { start: 'WALK', target: 'RUNS' },
+    { start: 'SPIN', target: 'TURN' },
+    { start: 'EYES', target: 'NOSE' },
+    { start: 'LIPS', target: 'FACE' },
+    { start: 'SKIN', target: 'BONE' },
+    { start: 'KNEE', target: 'SHIN' },
   ],
   EN_5: [
     { start: 'HEART', target: 'SHARE' },
@@ -193,6 +292,65 @@ const CURATED_PAIRS: Record<`${Language}_${WordLength}`, CuratedPair[]> = {
     { start: 'GREEN', target: 'TROUT' },
     { start: 'MAGIC', target: 'TANGY' },
     { start: 'STONE', target: 'REARS' },
+    { start: 'BREAD', target: 'TOAST' },
+    { start: 'WATER', target: 'RIVER' },
+    { start: 'STORM', target: 'CLOUD' },
+    { start: 'FLAME', target: 'SPARK' },
+    { start: 'SLEEP', target: 'DREAM' },
+    { start: 'WHALE', target: 'SHARK' },
+    { start: 'PLATE', target: 'BOWLS' },
+    { start: 'SHIRT', target: 'JEANS' },
+    { start: 'BOOTS', target: 'SOCKS' },
+    { start: 'SCARF', target: 'GLOVE' },
+    { start: 'WOODS', target: 'GROVE' },
+    { start: 'PLANT', target: 'BLOOM' },
+    { start: 'SEEDS', target: 'ROOTS' },
+    { start: 'STARS', target: 'COMET' },
+    { start: 'BRAIN', target: 'THINK' },
+    { start: 'PEACE', target: 'TRUCE' },
+    { start: 'GRACE', target: 'CHARM' },
+    { start: 'FRESH', target: 'CRISP' },
+    { start: 'QUIET', target: 'STILL' },
+    { start: 'WRITE', target: 'PROSE' },
+    { start: 'STAGE', target: 'SCENE' },
+    { start: 'DRIVE', target: 'TRACK' },
+    { start: 'GLASS', target: 'BRICK' },
+    { start: 'CHESS', target: 'CARDS' },
+    { start: 'SMILE', target: 'GLOWS' },
+    { start: 'HOUSE', target: 'HOMES' },
+    { start: 'LEMON', target: 'LIMES' },
+    { start: 'SNOWS', target: 'FROST' },
+    { start: 'WINDS', target: 'GALES' },
+    { start: 'GLOBE', target: 'SPACE' },
+    { start: 'WHITE', target: 'BLACK' },
+    { start: 'HAPPY', target: 'MERRY' },
+    { start: 'FUNNY', target: 'JOLLY' },
+    { start: 'TRUST', target: 'FAITH' },
+    { start: 'CHOIR', target: 'CHIME' },
+    { start: 'FLUTE', target: 'DRUMS' },
+    { start: 'GREAT', target: 'GRAND' },
+    { start: 'POINT', target: 'LINES' },
+    { start: 'FRONT', target: 'BACKS' },
+    { start: 'EARLY', target: 'LATER' },
+    { start: 'PAUSE', target: 'CEASE' },
+    { start: 'WORDS', target: 'STORY' },
+    { start: 'BOOKS', target: 'PAPER' },
+    { start: 'NOVEL', target: 'POEMS' },
+    { start: 'SHEET', target: 'PAGES' },
+    { start: 'CROSS', target: 'TRAIL' },
+    { start: 'TIGER', target: 'LIONS' },
+    { start: 'BIRDS', target: 'WINGS' },
+    { start: 'SNAKE', target: 'FROGS' },
+    { start: 'WALLS', target: 'DOORS' },
+    { start: 'STORE', target: 'SHOPS' },
+    { start: 'MONEY', target: 'COINS' },
+    { start: 'GIFTS', target: 'CARDS' },
+    { start: 'SHAPE', target: 'FORMS' },
+    { start: 'FORCE', target: 'POWER' },
+    { start: 'HEAVY', target: 'DENSE' },
+    { start: 'FEAST', target: 'MEALS' },
+    { start: 'SPELL', target: 'CHARM' },
+    { start: 'CHEST', target: 'TRUNK' },
   ],
   FR_4: [
     { start: 'VENT', target: 'SANG' },
@@ -205,6 +363,61 @@ const CURATED_PAIRS: Record<`${Language}_${WordLength}`, CuratedPair[]> = {
     { start: 'ROSE', target: 'LIME' },
     { start: 'MARE', target: 'LUNE' },
     { start: 'TOUR', target: 'PONT' },
+    { start: 'MAIN', target: 'PIED' },
+    { start: 'YEUX', target: 'PEAU' },
+    { start: 'TETE', target: 'COUP' },
+    { start: 'AMIE', target: 'RUDE' },
+    { start: 'BEAU', target: 'LAID' },
+    { start: 'DOUX', target: 'RAPE' },
+    { start: 'BLEU', target: 'VERT' },
+    { start: 'NOIR', target: 'GRIS' },
+    { start: 'ORNE', target: 'PALE' },
+    { start: 'BRUN', target: 'ROUX' },
+    { start: 'LAIT', target: 'MIEL' },
+    { start: 'LION', target: 'OURS' },
+    { start: 'PORT', target: 'QUAI' },
+    { start: 'PONT', target: 'GARE' },
+    { start: 'MURS', target: 'TOIT' },
+    { start: 'DORT', target: 'REVE' },
+    { start: 'COUR', target: 'SAUT' },
+    { start: 'LIRE', target: 'VOIR' },
+    { start: 'FAIT', target: 'PRIS' },
+    { start: 'VAIN', target: 'FIER' },
+    { start: 'LOIN', target: 'PRES' },
+    { start: 'SEUL', target: 'DEUX' },
+    { start: 'LAME', target: 'EPEE' },
+    { start: 'PAIX', target: 'TRUC' },
+    { start: 'JEUX', target: 'RUSE' },
+    { start: 'SONS', target: 'VOIX' },
+    { start: 'CUIR', target: 'DRAP' },
+    { start: 'AMIS', target: 'CHER' },
+    { start: 'BANC', target: 'PARC' },
+    { start: 'BORD', target: 'RIVE' },
+    { start: 'BRAS', target: 'MAIN' },
+    { start: 'BRIE', target: 'MIDI' },
+    { start: 'CAPE', target: 'ROBE' },
+    { start: 'CAVE', target: 'VINS' },
+    { start: 'CERF', target: 'DAIM' },
+    { start: 'CHAR', target: 'TANK' },
+    { start: 'CHEF', target: 'ROIS' },
+    { start: 'CRIE', target: 'RIRE' },
+    { start: 'CUBE', target: 'ROND' },
+    { start: 'DANS', target: 'SOUS' },
+    { start: 'DATE', target: 'MOIS' },
+    { start: 'DEMI', target: 'TOUT' },
+    { start: 'DENT', target: 'JOUE' },
+    { start: 'DIEU', target: 'ANGE' },
+    { start: 'DIRE', target: 'MOTS' },
+    { start: 'DOME', target: 'TOUR' },
+    { start: 'DONT', target: 'POUR' },
+    { start: 'DRAP', target: 'LITS' },
+    { start: 'EAUX', target: 'FLOT' },
+    { start: 'ETAT', target: 'PAYS' },
+    { start: 'FAIM', target: 'SOIF' },
+    { start: 'FILS', target: 'PERE' },
+    { start: 'FOIS', target: 'TOUR' },
+    { start: 'FOND', target: 'HAUT' },
+    { start: 'FORT', target: 'DOUX' },
   ],
   FR_5: [
     { start: 'TERRE', target: 'MERLE' },
@@ -213,6 +426,59 @@ const CURATED_PAIRS: Record<`${Language}_${WordLength}`, CuratedPair[]> = {
     { start: 'CHAUD', target: 'TROIS' },
     { start: 'SABLE', target: 'FIRME' },
     { start: 'FRIME', target: 'CRANE' },
+    { start: 'CHOSE', target: 'FORCE' },
+    { start: 'AIMER', target: 'HAINE' },
+    { start: 'JOURS', target: 'SOIRS' },
+    { start: 'ROUGE', target: 'VERTS' },
+    { start: 'PAINS', target: 'TARTE' },
+    { start: 'POMME', target: 'POIRE' },
+    { start: 'SOUPE', target: 'CREME' },
+    { start: 'CHATS', target: 'LOUPS' },
+    { start: 'AIGLE', target: 'MERLE' },
+    { start: 'ROCHE', target: 'MONTS' },
+    { start: 'FORET', target: 'BOISE' },
+    { start: 'MAINS', target: 'PIEDS' },
+    { start: 'DENTS', target: 'LEVRE' },
+    { start: 'LIVRE', target: 'PAGES' },
+    { start: 'DANSE', target: 'VALSE' },
+    { start: 'VILLE', target: 'RUEES' },
+    { start: 'ROUTE', target: 'PISTE' },
+    { start: 'ROBES', target: 'JUPES' },
+    { start: 'BOTTE', target: 'GANTS' },
+    { start: 'GARDE', target: 'ARMEE' },
+    { start: 'PEINE', target: 'JOIES' },
+    { start: 'JAUNE', target: 'BLEUE' },
+    { start: 'MATIN', target: 'SOIRS' },
+    { start: 'ORAGE', target: 'BRUME' },
+    { start: 'ROSES', target: 'LILAS' },
+    { start: 'TIGRE', target: 'LIONS' },
+    { start: 'SIEGE', target: 'BANCS' },
+    { start: 'LITRE', target: 'VERRE' },
+    { start: 'POELE', target: 'FOURS' },
+    { start: 'POIRE', target: 'PRUNE' },
+    { start: 'SALEE', target: 'SUCRE' },
+    { start: 'SANGS', target: 'VEINE' },
+    { start: 'CONTE', target: 'ROMAN' },
+    { start: 'VERSO', target: 'RECTO' },
+    { start: 'FLUTE', target: 'HARPE' },
+    { start: 'TOILE', target: 'CADRE' },
+    { start: 'COULE', target: 'TEINT' },
+    { start: 'VOILE', target: 'CANOT' },
+    { start: 'VESTE', target: 'CAPOT' },
+    { start: 'BONNE', target: 'BERET' },
+    { start: 'BOTTE', target: 'TALON' },
+    { start: 'CABLE', target: 'FILMS' },
+    { start: 'GAGNE', target: 'PERDS' },
+    { start: 'HAUTS', target: 'BASES' },
+    { start: 'LOURD', target: 'LEGER' },
+    { start: 'PARTI', target: 'RESTE' },
+    { start: 'DORME', target: 'REVER' },
+    { start: 'PARLE', target: 'TAISE' },
+    { start: 'LUTIN', target: 'TAPIS' },
+    { start: 'ETUDE', target: 'EXILE' },
+    { start: 'EVITE', target: 'GRIME' },
+    { start: 'CYGNE', target: 'VAGUE' },
+    { start: 'FAUVE', target: 'REINE' },
   ],
 };
 
@@ -283,10 +549,10 @@ export function generateWordPair(
       ? FR_4_LIST
       : FR_5_LIST;
 
-  // Prefer curated everyday pairs for Daily mode and FR / 5-letter challenges
+  // Use curated everyday pairs deterministically for Daily mode, and ~35% of the time otherwise
   const curated = CURATED_PAIRS[key].filter((p) => p.start !== avoidStartWord);
 
-  if (mode === 'daily' || lang === 'FR' || length === 5 || rng() < 0.6) {
+  if (mode === 'daily' || rng() < 0.35) {
     for (let attempt = 0; attempt < curated.length; attempt++) {
       const idx = Math.floor(rng() * curated.length);
       const chosen = curated[(idx + attempt) % curated.length];
@@ -303,9 +569,10 @@ export function generateWordPair(
   }
 
   // Try random BFS distance-4..7 discovery on the dictionary
-  for (let attempt = 0; attempt < 25; attempt++) {
+  for (let attempt = 0; attempt < 40; attempt++) {
     const start = wordList[Math.floor(rng() * wordList.length)];
     if (!start || start === avoidStartWord) continue;
+    if (findNeighbors(start, vocab).length < 2) continue;
 
     // BFS layer expansion to find words at exact distance 4..7
     const dist = new Map<string, number>();
@@ -332,7 +599,15 @@ export function generateWordPair(
     }
 
     if (candidates.length > 0) {
-      const target = candidates[Math.floor(rng() * candidates.length)];
+      const farCandidates = candidates.filter((cand) => {
+        let diff = 0;
+        for (let i = 0; i < cand.length; i++) {
+          if (cand[i] !== start[i]) diff++;
+        }
+        return diff >= 3;
+      });
+      const targetPool = farCandidates.length > 0 ? farCandidates : candidates;
+      const target = targetPool[Math.floor(rng() * targetPool.length)];
       const path = findShortestPath(start, target, lang);
       if (path && path.length - 1 >= 4 && path.length - 1 <= 7) {
         return {

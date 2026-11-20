@@ -1,4 +1,10 @@
-import { findShortestPath, generateWordPair, isOneLetterDiff } from '../engine/wordLadder';
+import {
+  findShortestPath,
+  findShortestPathExcluding,
+  findValidNeighbors,
+  generateWordPair,
+  isOneLetterDiff,
+} from '../engine/wordLadder';
 import {
   broadcastSupabaseRoomUpdate,
   broadcastSupabaseTyping,
@@ -48,11 +54,7 @@ export function passTurnIfExpired(
   graceMs = 0
 ): GameRoom | null {
   if (room.status !== 'active') return null;
-  if (
-    room.autoPartnerEnabled ||
-    isBotPartner(room.partnerPlayer.playerId) ||
-    isWaitingPartner(room.partnerPlayer.playerId)
-  ) {
+  if (isWaitingPartner(room.partnerPlayer.playerId)) {
     return null;
   }
   if (room.hostPlayer.playerId === room.partnerPlayer.playerId) return null;
@@ -179,8 +181,62 @@ export {
   pushRemoteMove,
   type RoomUpdateMeta,
   updateRemoteRoomState,
+  upsertProfileRemote,
   WAITING_PARTNER_ID,
 };
+
+export interface ResolvedParticipants {
+  isHost: boolean;
+  me: PlayerPresence;
+  partner: PlayerPresence;
+  waitingForPartner: boolean;
+  isBot: boolean;
+  isMyTurn: boolean;
+}
+
+export function resolveRoomParticipants(
+  room: GameRoom,
+  profile: Pick<PlayerProfile, 'playerId' | 'name'>
+): ResolvedParticipants {
+  const sameBothSlots = room.hostPlayer.playerId === room.partnerPlayer.playerId;
+
+  let isHost: boolean;
+  if (room.hostPlayer.playerId === profile.playerId) {
+    isHost = true;
+  } else if (room.partnerPlayer.playerId === profile.playerId) {
+    isHost = false;
+  } else {
+    const myName = profile.name.trim().toLowerCase();
+    const hostNameMatch = room.hostPlayer.name.trim().toLowerCase() === myName;
+    const partnerNameMatch = room.partnerPlayer.name.trim().toLowerCase() === myName;
+    isHost = hostNameMatch && !partnerNameMatch;
+  }
+
+  const me = isHost ? room.hostPlayer : room.partnerPlayer;
+  const rawPartner = isHost ? room.partnerPlayer : room.hostPlayer;
+  const waitingForPartner =
+    sameBothSlots ||
+    isWaitingPartner(rawPartner.playerId) ||
+    rawPartner.playerId === profile.playerId;
+  const partner = waitingForPartner ? createWaitingPartnerPresence() : rawPartner;
+  const isBot = !waitingForPartner && isBotPartner(partner.playerId);
+
+  const matchedById =
+    room.hostPlayer.playerId === profile.playerId ||
+    room.partnerPlayer.playerId === profile.playerId;
+  const isMyTurn = matchedById
+    ? room.currentTurnPlayerId === profile.playerId
+    : room.currentTurnPlayerId === me.playerId;
+
+  return {
+    isHost,
+    me,
+    partner,
+    waitingForPartner,
+    isBot,
+    isMyTurn,
+  };
+}
 
 function migrateLocalPlayerId(
   profile: PlayerProfile,
@@ -247,12 +303,24 @@ export async function bootstrapSupabaseState(
       mergedRooms[code] = remoteRoom;
       continue;
     }
-    const existingAuto = existing.autoPartnerEnabled;
-    const remoteHasRealPartner = !remoteRoom.autoPartnerEnabled;
+    if (existing.status === 'completed' && remoteRoom.status !== 'completed') {
+      continue;
+    }
+    const existingWaitingOrBot =
+      existing.autoPartnerEnabled ||
+      isWaitingPartner(existing.partnerPlayer.playerId) ||
+      isBotPartner(existing.partnerPlayer.playerId);
+    const remoteHasRealPartner =
+      !remoteRoom.autoPartnerEnabled &&
+      !isWaitingPartner(remoteRoom.partnerPlayer.playerId) &&
+      !isBotPartner(remoteRoom.partnerPlayer.playerId);
     if (
       remoteRoom.status === 'completed' ||
       remoteRoom.moves.length > existing.moves.length ||
-      (existingAuto && remoteHasRealPartner)
+      remoteRoom.undoPenaltyCount > existing.undoPenaltyCount ||
+      (existingWaitingOrBot && remoteHasRealPartner) ||
+      (remoteRoom.moves.length === existing.moves.length &&
+        remoteRoom.currentTurnPlayerId !== existing.currentTurnPlayerId)
     ) {
       mergedRooms[code] = remoteRoom;
     }
@@ -405,9 +473,46 @@ export function saveRooms(rooms: Record<string, GameRoom>): void {
   localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
 }
 
-export function generateRoomCode(startWord: string): string {
-  const num = Math.floor(10 + Math.random() * 89);
-  return `${startWord.slice(0, 4).toUpperCase()}-${num}`;
+const ROOM_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function randomCodeSegment(length: number): string {
+  const out: string[] = [];
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    for (let i = 0; i < length; i++) {
+      out.push(ROOM_CODE_ALPHABET[bytes[i] % ROOM_CODE_ALPHABET.length]);
+    }
+  } else {
+    for (let i = 0; i < length; i++) {
+      out.push(ROOM_CODE_ALPHABET[Math.floor(Math.random() * ROOM_CODE_ALPHABET.length)]);
+    }
+  }
+  return out.join('');
+}
+
+function formatDailyDateStamp(date = new Date()): string {
+  const yy = String(date.getFullYear()).slice(-2);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yy}${mm}${dd}`;
+}
+
+export function generateRoomCode(
+  startWord: string,
+  existingCodes?: Iterable<string>
+): string {
+  const taken = new Set(
+    existingCodes ? Array.from(existingCodes, (c) => c.toUpperCase()) : []
+  );
+  taken.add(STARTER_ROOM_CODE);
+
+  const prefix = startWord.slice(0, 4).toUpperCase();
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = `${prefix}-${randomCodeSegment(4)}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${prefix}-${randomCodeSegment(6)}`;
 }
 
 export function createNewRoom(
@@ -415,13 +520,29 @@ export function createNewRoom(
   language: Language,
   wordLength: WordLength,
   mode: GameMode,
-  avoidStartWord?: string
+  avoidStartWord?: string,
+  existingCodes?: Iterable<string>
 ): GameRoom {
   const pair = generateWordPair(language, wordLength, mode, avoidStartWord);
-  const code =
-    mode === 'daily'
-      ? `DAY-${language}${wordLength}-${profile.playerId.slice(0, 4).toUpperCase()}`
-      : generateRoomCode(pair.startWord);
+  const taken = new Set(
+    existingCodes ? Array.from(existingCodes, (c) => c.toUpperCase()) : []
+  );
+  taken.add(STARTER_ROOM_CODE);
+
+  let code: string;
+  if (mode === 'daily') {
+    const dayStamp = formatDailyDateStamp();
+    const base = `D${dayStamp}-${language}${wordLength}`;
+    let candidate = `${base}-${randomCodeSegment(4)}`;
+    let guard = 0;
+    while (taken.has(candidate) && guard < 50) {
+      candidate = `${base}-${randomCodeSegment(4)}`;
+      guard++;
+    }
+    code = candidate;
+  } else {
+    code = generateRoomCode(pair.startWord, taken);
+  }
 
   const hostPresence: PlayerPresence = {
     playerId: profile.playerId,
@@ -505,24 +626,39 @@ export function joinOrCreateRoomByCode(codeRaw: string, player: PlayerProfile): 
   return fresh;
 }
 
+export type JoinRoomResult =
+  | { status: 'ok'; room: GameRoom; migratedProfile?: PlayerProfile }
+  | { status: 'full'; migratedProfile?: PlayerProfile };
+
 export async function joinRoomRemoteOrLocal(
   codeRaw: string,
   player: PlayerProfile
-): Promise<GameRoom> {
+): Promise<JoinRoomResult> {
   const cleanCode = codeRaw.trim().toUpperCase();
   const uid = await ensureSupabaseSession();
-  const resolvedPlayer = uid && player.playerId !== uid ? { ...player, playerId: uid } : player;
+
+  let resolvedPlayer = player;
+  let migratedProfile: PlayerProfile | undefined;
+  if (uid && player.playerId !== uid) {
+    const migrated = migrateLocalPlayerId(player, loadRooms(player), uid);
+    resolvedPlayer = migrated.profile;
+    migratedProfile = migrated.profile;
+  }
 
   if (cleanCode !== STARTER_ROOM_CODE) {
-    const remoteRoom = await claimRemoteRoomByCode(cleanCode, resolvedPlayer);
-    if (remoteRoom) {
+    const claimResult = await claimRemoteRoomByCode(cleanCode, resolvedPlayer);
+    if (claimResult.status === 'full') {
+      return { status: 'full', migratedProfile };
+    }
+    if (claimResult.status === 'ok') {
       const rooms = loadRooms(resolvedPlayer);
-      rooms[cleanCode] = remoteRoom;
+      rooms[cleanCode] = claimResult.room;
       saveRooms(rooms);
-      broadcastRoomUpdate(remoteRoom, resolvedPlayer.playerId);
-      return remoteRoom;
+      broadcastRoomUpdate(claimResult.room, resolvedPlayer.playerId);
+      return { status: 'ok', room: claimResult.room, migratedProfile };
     }
   }
+
   const localRoom = joinOrCreateRoomByCode(cleanCode, resolvedPlayer);
   if (
     cleanCode !== STARTER_ROOM_CODE &&
@@ -530,14 +666,55 @@ export async function joinRoomRemoteOrLocal(
   ) {
     void createOrUpsertRemoteRoom(localRoom);
   }
-  return localRoom;
+  return { status: 'ok', room: localRoom, migratedProfile };
+}
+
+function hammingDistance(a: string, b: string): number {
+  let diff = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) diff++;
+  }
+  return diff + Math.abs(a.length - b.length);
 }
 
 export function pickSmartPartnerMove(room: GameRoom, partner: PlayerPresence): WordMove | null {
-  const path = findShortestPath(room.currentWord, room.targetWord, room.language);
-  if (!path || path.length < 2) return null;
+  const currentUpper = room.currentWord.trim().toUpperCase();
+  const targetUpper = room.targetWord.trim().toUpperCase();
+  const visited = new Set<string>([
+    room.startWord.trim().toUpperCase(),
+    ...room.moves.map((m) => m.word.trim().toUpperCase()),
+  ]);
+  visited.delete(currentUpper);
+  visited.delete(targetUpper);
 
-  const nextWord = path[1];
+  let nextWord: string | null = null;
+
+  const cleanPath = findShortestPathExcluding(
+    room.currentWord,
+    room.targetWord,
+    room.language,
+    visited
+  );
+  if (cleanPath && cleanPath.length >= 2) {
+    nextWord = cleanPath[1];
+  } else {
+    const fallbackPath = findShortestPath(room.currentWord, room.targetWord, room.language);
+    if (fallbackPath && fallbackPath.length >= 2) {
+      nextWord = fallbackPath[1];
+    } else {
+      const neighbors = findValidNeighbors(room.currentWord, room.language);
+      if (neighbors.length > 0) {
+        const unvisitedNeighbors = neighbors.filter((w) => !visited.has(w));
+        const pool = unvisitedNeighbors.length > 0 ? unvisitedNeighbors : neighbors;
+        pool.sort((a, b) => hammingDistance(a, targetUpper) - hammingDistance(b, targetUpper));
+        nextWord = pool[0];
+      }
+    }
+  }
+
+  if (!nextWord) return null;
+
   const diff = isOneLetterDiff(room.currentWord, nextWord);
   if (!diff.valid) return null;
 
@@ -553,6 +730,75 @@ export function pickSmartPartnerMove(room: GameRoom, partner: PlayerPresence): W
     playerAvatarId: partner.avatarId,
     playerColor: partner.color,
     timestamp: Date.now(),
+  };
+}
+
+export interface BotTurnPlan {
+  willTimeout: boolean;
+  thinkMs: number;
+  typingPulses: Array<{ startMs: number; endMs: number }>;
+}
+
+export function planBotTurnBehavior(
+  room: GameRoom,
+  rng: () => number = Math.random
+): BotTurnPlan {
+  const path = findShortestPath(room.currentWord, room.targetWord, room.language);
+  const remainingSteps = path ? Math.max(0, path.length - 1) : 5;
+
+  let timeoutChance = room.wordLength === 5 ? 0.36 : 0.26;
+  if (remainingSteps <= 1) {
+    timeoutChance -= 0.1;
+  } else if (remainingSteps >= 4) {
+    timeoutChance += 0.08;
+  }
+  if (room.lastTurnPass && isBotPartner(room.lastTurnPass.toPlayerId)) {
+    timeoutChance += 0.12;
+  }
+  timeoutChance = Math.min(0.55, Math.max(0.15, timeoutChance));
+
+  const willTimeout = rng() < timeoutChance;
+  if (willTimeout) {
+    const s1 = Math.round(1500 + rng() * 1500);
+    const e1 = s1 + Math.round(2500 + rng() * 1700);
+    const s2 = Math.round(10500 + rng() * 3000);
+    const e2 = s2 + Math.round(3000 + rng() * 1800);
+    const s3 = Math.round(20500 + rng() * 2500);
+    const e3 = Math.min(27800, s3 + Math.round(2800 + rng() * 1400));
+
+    return {
+      willTimeout: true,
+      thinkMs: TURN_TIMEOUT_MS + 5_000,
+      typingPulses: [
+        { startMs: s1, endMs: e1 },
+        { startMs: s2, endMs: e2 },
+        { startMs: s3, endMs: e3 },
+      ],
+    };
+  }
+
+  const hardThink = rng() < 0.42;
+  if (!hardThink) {
+    const thinkMs = Math.round(2800 + rng() * 5700);
+    const typingStart = Math.max(600, thinkMs - Math.round(1400 + rng() * 1200));
+    return {
+      willTimeout: false,
+      thinkMs,
+      typingPulses: [{ startMs: typingStart, endMs: thinkMs }],
+    };
+  }
+
+  const thinkMs = Math.round(11500 + rng() * 12500);
+  const s1 = Math.round(1800 + rng() * 1400);
+  const e1 = s1 + Math.round(2400 + rng() * 1400);
+  const s2 = Math.max(e1 + 1500, thinkMs - Math.round(1800 + rng() * 1500));
+  return {
+    willTimeout: false,
+    thinkMs,
+    typingPulses: [
+      { startMs: s1, endMs: e1 },
+      { startMs: s2, endMs: thinkMs },
+    ],
   };
 }
 
@@ -616,10 +862,10 @@ export function subscribeRealtimeSync(
     const data = ev.data;
     if (!data) return;
     if (data.type === 'ROOM_UPDATED') {
-      onRoomUpdate(
-        data.room,
-        data.rematchFromCode ? { rematchFromCode: data.rematchFromCode } : undefined
-      );
+      onRoomUpdate(data.room, {
+        ...(data.rematchFromCode ? { rematchFromCode: data.rematchFromCode } : {}),
+        source: 'local',
+      });
     } else if (data.type === 'TYPING_STATE' && onTypingChange) {
       onTypingChange(data.roomCode, data.playerId, data.isTyping);
     }

@@ -27,13 +27,16 @@ import {
   MIYU_BOT_ID,
   passTurnIfExpired,
   pickSmartPartnerMove,
+  planBotTurnBehavior,
   pushRemoteMove,
   requestPushPermissionAndNotify,
+  resolveRoomParticipants,
   type RoomUpdateMeta,
   saveProfile,
   saveRooms,
   subscribeRealtimeSync,
   updateRemoteRoomState,
+  upsertProfileRemote,
   WAITING_PARTNER_ID,
 } from './services/multiplayer';
 import type {
@@ -71,6 +74,20 @@ function isSameDuo(a: GameRoom, b: GameRoom): boolean {
   return pairA[0] === pairB[0] && pairA[1] === pairB[1];
 }
 
+const GENERIC_FALLBACK_NAMES = new Set([
+  'hôte',
+  'host',
+  'partenaire',
+  'partner',
+  'en attente...',
+  'waiting...',
+]);
+
+function isGenericFallbackName(name: string | null | undefined): boolean {
+  if (!name) return true;
+  return GENERIC_FALLBACK_NAMES.has(name.trim().toLowerCase());
+}
+
 export function App() {
   const [profile, setProfile] = useState<PlayerProfile | null>(() => loadProfile());
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() =>
@@ -83,6 +100,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>('hub');
   const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [createSheetDaily, setCreateSheetDaily] = useState(false);
+  const [hubNotice, setHubNotice] = useState<string | null>(null);
 
   const [lastVictoryMeta, setLastVictoryMeta] = useState<{
     roomCode: string;
@@ -91,10 +109,17 @@ export function App() {
     earnedStars: number;
   } | null>(null);
 
-  const partnerTimerRef = useRef<number | null>(null);
   const bootstrappedRef = useRef(false);
   const rewardedRoomsRef = useRef<Set<string>>(new Set());
+  const lastLocalMutationRef = useRef<Record<string, number>>({});
+  const hubNoticeTimerRef = useRef<number | null>(null);
   const [authBootstrapped, setAuthBootstrapped] = useState(false);
+
+  const showHubNotice = useCallback((message: string) => {
+    if (hubNoticeTimerRef.current) window.clearTimeout(hubNoticeTimerRef.current);
+    setHubNotice(message);
+    hubNoticeTimerRef.current = window.setTimeout(() => setHubNotice(null), 4000);
+  }, []);
 
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
@@ -144,14 +169,30 @@ export function App() {
 
     void (async () => {
       const joined = await joinRoomRemoteOrLocal(codeToJoin, profile);
-      const next = { ...roomsRef.current, [joined.code]: joined };
+      const effectiveProfile = joined.migratedProfile ?? profile;
+      if (joined.migratedProfile) {
+        profileRef.current = joined.migratedProfile;
+        setProfile(joined.migratedProfile);
+      }
+      if (joined.status === 'full') {
+        const syncedRooms = joined.migratedProfile
+          ? loadRooms(effectiveProfile)
+          : roomsRef.current;
+        roomsRef.current = syncedRooms;
+        setRooms(syncedRooms);
+        setScreen('hub');
+        showHubNotice(translate('hub.roomFull'));
+        return;
+      }
+      const baseRooms = joined.migratedProfile ? loadRooms(effectiveProfile) : roomsRef.current;
+      const next = { ...baseRooms, [joined.room.code]: joined.room };
       roomsRef.current = next;
       saveRooms(next);
       setRooms(next);
-      setActiveRoomCode(joined.code);
-      setScreen(joined.status === 'completed' ? 'victory' : 'board');
+      setActiveRoomCode(joined.room.code);
+      setScreen(joined.room.status === 'completed' ? 'victory' : 'board');
     })();
-  }, [authBootstrapped, profile, pendingJoinCode]);
+  }, [authBootstrapped, profile, pendingJoinCode, showHubNotice]);
 
   const completeRoomVictory = useCallback((completedRoom: GameRoom) => {
     const activeProfile = profileRef.current;
@@ -207,12 +248,7 @@ export function App() {
     ];
     const uniqueWords = Array.from(new Set([...activeProfile.uniqueWordsUsed, ...wordsInGame]));
 
-    const isHost =
-      completedRoom.hostPlayer.playerId === activeProfile.playerId ||
-      (completedRoom.partnerPlayer.playerId !== activeProfile.playerId &&
-        completedRoom.hostPlayer.name === activeProfile.name &&
-        completedRoom.partnerPlayer.name !== activeProfile.name);
-    const partner = isHost ? completedRoom.partnerPlayer : completedRoom.hostPlayer;
+    const { partner } = resolveRoomParticipants(completedRoom, activeProfile);
 
     const todayStr = new Date().toISOString().slice(0, 10);
     const shouldIncrementStreak = activeProfile.lastPlayedDate !== todayStr;
@@ -313,6 +349,17 @@ export function App() {
         if (existing && existing.status === 'completed' && updatedRoom.status === 'active') {
           return;
         }
+        if (
+          existing &&
+          meta?.source === 'postgres' &&
+          existing.status === updatedRoom.status &&
+          existing.moves.length === updatedRoom.moves.length &&
+          existing.undoPenaltyCount === updatedRoom.undoPenaltyCount &&
+          existing.partnerPlayer.playerId === updatedRoom.partnerPlayer.playerId &&
+          Date.now() - (lastLocalMutationRef.current[updatedRoom.code] ?? 0) < 2500
+        ) {
+          return;
+        }
 
         let mergedRoom = updatedRoom;
         if (existing) {
@@ -354,6 +401,27 @@ export function App() {
               ...updatedRoom,
               turnStartedAt: existing.turnStartedAt ?? updatedRoom.turnStartedAt ?? Date.now(),
               lastTurnPass: updatedRoom.lastTurnPass ?? existing.lastTurnPass,
+            };
+          }
+
+          if (
+            mergedRoom.hostPlayer.playerId === existing.hostPlayer.playerId &&
+            isGenericFallbackName(mergedRoom.hostPlayer.name) &&
+            !isGenericFallbackName(existing.hostPlayer.name)
+          ) {
+            mergedRoom = {
+              ...mergedRoom,
+              hostPlayer: { ...mergedRoom.hostPlayer, name: existing.hostPlayer.name },
+            };
+          }
+          if (
+            mergedRoom.partnerPlayer.playerId === existing.partnerPlayer.playerId &&
+            isGenericFallbackName(mergedRoom.partnerPlayer.name) &&
+            !isGenericFallbackName(existing.partnerPlayer.name)
+          ) {
+            mergedRoom = {
+              ...mergedRoom,
+              partnerPlayer: { ...mergedRoom.partnerPlayer, name: existing.partnerPlayer.name },
             };
           }
 
@@ -426,15 +494,16 @@ export function App() {
     const prev = roomsRef.current;
     const room = prev[roomCode];
     if (!room || room.status === 'completed') return;
-    if (room.currentTurnPlayerId !== activeProfile.playerId) return;
+
+    const { me, partner, isMyTurn } = resolveRoomParticipants(room, activeProfile);
+    if (!isMyTurn) return;
 
     const diff = isOneLetterDiff(room.currentWord, nextWord);
     if (!diff.valid) return;
 
-    const isHost = room.hostPlayer.playerId === activeProfile.playerId;
-    const actor = isHost ? room.hostPlayer : room.partnerPlayer;
-    const partnerPresence = isHost ? room.partnerPlayer : room.hostPlayer;
-    const nextTurnPlayerId = partnerPresence.playerId;
+    const actor = me;
+    const nextTurnPlayerId =
+      partner.playerId === me.playerId ? WAITING_PARTNER_ID : partner.playerId;
 
     const move: WordMove = {
       id: generateUuid(),
@@ -451,20 +520,22 @@ export function App() {
     };
 
     const reachedTarget = nextWord === room.targetWord;
+    const now = Date.now();
     const updatedRoom: GameRoom = {
       ...room,
       currentWord: nextWord,
       moves: [...room.moves, move],
       currentTurnPlayerId: reachedTarget ? room.currentTurnPlayerId : nextTurnPlayerId,
-      turnStartedAt: Date.now(),
+      turnStartedAt: now,
       lastTurnPass: undefined,
       status: reachedTarget ? 'completed' : 'active',
-      completedAt: reachedTarget ? Date.now() : undefined,
+      completedAt: reachedTarget ? now : undefined,
       winnerPlayerId: reachedTarget ? actor.playerId : undefined,
       hostPlayer: { ...room.hostPlayer, isTyping: false },
       partnerPlayer: { ...room.partnerPlayer, isTyping: false },
     };
 
+    lastLocalMutationRef.current[roomCode] = now;
     const nextRooms = { ...prev, [roomCode]: updatedRoom };
     roomsRef.current = nextRooms;
     saveRooms(nextRooms);
@@ -477,156 +548,236 @@ export function App() {
     }
   }, []);
 
-  // Automatic smart partner response (Miyu) when it's her turn & autoPartnerEnabled is true
+  const activeBotRoom = activeRoomCode ? rooms[activeRoomCode] : null;
+  const activeBotRoomStatus = activeBotRoom?.status;
+  const activeBotRoomAuto = activeBotRoom?.autoPartnerEnabled ?? false;
+  const activeBotRoomPartnerId = activeBotRoom?.partnerPlayer.playerId;
+  const activeBotRoomTurnId = activeBotRoom?.currentTurnPlayerId;
+  const activeBotRoomWord = activeBotRoom?.currentWord;
+  const activeBotRoomMovesLen = activeBotRoom?.moves.length ?? 0;
+
+  // Automatic smart partner response (Miyu) when it's her turn & partner is Miyu
   useEffect(() => {
-    if (!profile || !activeRoomCode || screen !== 'board') return;
-    const room = rooms[activeRoomCode];
-    if (!room || room.status !== 'active' || !room.autoPartnerEnabled) return;
-    if (room.currentTurnPlayerId === profile.playerId) return;
+    const activeProfile = profileRef.current;
+    const room = activeRoomCode ? roomsRef.current[activeRoomCode] : null;
+    if (!activeProfile || !activeRoomCode || screen !== 'board') return;
+    if (!room || room.status !== 'active') return;
 
-    const isHost = room.hostPlayer.playerId === profile.playerId;
-    const partner = isHost ? room.partnerPlayer : room.hostPlayer;
-    if (!isBotPartner(partner.playerId)) return;
+    const { isBot, isMyTurn } = resolveRoomParticipants(room, activeProfile);
+    if (isMyTurn || !isBot) return;
 
-    if (partnerTimerRef.current) window.clearTimeout(partnerTimerRef.current);
+    const roomCode = activeRoomCode;
+    const plan = planBotTurnBehavior(room);
+    const timers: number[] = [];
 
-    // Phase 1: show "Miyu tape..."
-    const typingTimer = window.setTimeout(() => {
+    const setBotTyping = (isTyping: boolean) => {
       setRooms((prev) => {
-        const cur = prev[activeRoomCode];
+        const cur = prev[roomCode];
         if (!cur || cur.status !== 'active') return prev;
-        return {
+        const latestProfile = profileRef.current;
+        if (!latestProfile) return prev;
+        const stateNow = resolveRoomParticipants(cur, latestProfile);
+        if (stateNow.isMyTurn || !stateNow.isBot || cur.partnerPlayer.isTyping === isTyping) {
+          return prev;
+        }
+        const nextRooms = {
           ...prev,
-          [activeRoomCode]: {
+          [roomCode]: {
             ...cur,
-            partnerPlayer: { ...cur.partnerPlayer, isTyping: true },
+            partnerPlayer: { ...cur.partnerPlayer, isTyping },
           },
         };
-      });
-    }, 450);
-
-    // Phase 2: Miyu executes optimal BFS step
-    partnerTimerRef.current = window.setTimeout(() => {
-      setRooms((prev) => {
-        const cur = prev[activeRoomCode];
-        if (!cur || cur.status !== 'active' || !cur.autoPartnerEnabled) return prev;
-        if (cur.currentTurnPlayerId === profile.playerId) return prev;
-
-        const move = pickSmartPartnerMove(cur, partner);
-        if (!move) return prev;
-
-        const reachedTarget = move.word === cur.targetWord;
-        const updated: GameRoom = {
-          ...cur,
-          currentWord: move.word,
-          moves: [...cur.moves, move],
-          currentTurnPlayerId: profile.playerId,
-          turnStartedAt: Date.now(),
-          lastTurnPass: undefined,
-          status: reachedTarget ? 'completed' : 'active',
-          completedAt: reachedTarget ? Date.now() : undefined,
-          winnerPlayerId: reachedTarget ? partner.playerId : undefined,
-          hostPlayer: { ...cur.hostPlayer, isTyping: false },
-          partnerPlayer: { ...cur.partnerPlayer, isTyping: false },
-        };
-
-        const nextRooms = { ...prev, [activeRoomCode]: updated };
         roomsRef.current = nextRooms;
-        saveRooms(nextRooms);
-        broadcastRoomUpdate(updated, partner.playerId);
-        void updateRemoteRoomState(updated);
-
-        requestPushPermissionAndNotify(
-          translate('notifications.partnerMovedTitle', {
-            name: partner.name,
-            word: move.word,
-          }),
-          translate('notifications.partnerMovedBody', {
-            name: partner.name,
-            from: move.fromChar,
-            to: move.toChar,
-          })
-        );
-
-        if (reachedTarget) {
-          window.setTimeout(() => completeRoomVictoryRef.current(updated), 380);
-        }
-
         return nextRooms;
       });
-    }, 1350);
+    };
+
+    for (const { startMs, endMs } of plan.typingPulses) {
+      timers.push(window.setTimeout(() => setBotTyping(true), startMs));
+      if (plan.willTimeout || endMs < plan.thinkMs) {
+        timers.push(window.setTimeout(() => setBotTyping(false), endMs));
+      }
+    }
+
+    // Execute optimal BFS step outside setRooms updater (StrictMode-safe) unless bot times out
+    if (!plan.willTimeout) {
+      timers.push(
+        window.setTimeout(() => {
+          const latestProfile = profileRef.current;
+          const prevRooms = roomsRef.current;
+          const cur = prevRooms[roomCode];
+          if (!latestProfile || !cur || cur.status !== 'active') return;
+
+          const {
+            me,
+            partner: curPartner,
+            isBot: curIsBot,
+            isMyTurn: curIsMyTurn,
+          } = resolveRoomParticipants(cur, latestProfile);
+          if (curIsMyTurn || !curIsBot) return;
+
+          const move = pickSmartPartnerMove(cur, curPartner);
+          const now = Date.now();
+          if (!move) {
+            const resetTurn: GameRoom = {
+              ...cur,
+              currentTurnPlayerId: me.playerId,
+              turnStartedAt: now,
+              hostPlayer: { ...cur.hostPlayer, isTyping: false },
+              partnerPlayer: { ...cur.partnerPlayer, isTyping: false },
+            };
+            lastLocalMutationRef.current[roomCode] = now;
+            const nextRooms = { ...prevRooms, [roomCode]: resetTurn };
+            roomsRef.current = nextRooms;
+            saveRooms(nextRooms);
+            setRooms(nextRooms);
+            return;
+          }
+
+          const reachedTarget = move.word === cur.targetWord;
+          const updated: GameRoom = {
+            ...cur,
+            currentWord: move.word,
+            moves: [...cur.moves, move],
+            currentTurnPlayerId: me.playerId,
+            turnStartedAt: now,
+            lastTurnPass: undefined,
+            status: reachedTarget ? 'completed' : 'active',
+            completedAt: reachedTarget ? now : undefined,
+            winnerPlayerId: reachedTarget ? curPartner.playerId : undefined,
+            autoPartnerEnabled: true,
+            hostPlayer: { ...cur.hostPlayer, isTyping: false },
+            partnerPlayer: { ...cur.partnerPlayer, isTyping: false },
+          };
+
+          lastLocalMutationRef.current[roomCode] = now;
+          const nextRooms = { ...prevRooms, [roomCode]: updated };
+          roomsRef.current = nextRooms;
+          saveRooms(nextRooms);
+          setRooms(nextRooms);
+          broadcastRoomUpdate(updated, curPartner.playerId);
+          void updateRemoteRoomState(updated);
+
+          requestPushPermissionAndNotify(
+            translate('notifications.partnerMovedTitle', {
+              name: curPartner.name,
+              word: move.word,
+            }),
+            translate('notifications.partnerMovedBody', {
+              name: curPartner.name,
+              from: move.fromChar,
+              to: move.toChar,
+            })
+          );
+
+          if (reachedTarget) {
+            window.setTimeout(() => completeRoomVictoryRef.current(updated), 380);
+          }
+        }, plan.thinkMs)
+      );
+    }
 
     return () => {
-      window.clearTimeout(typingTimer);
-      if (partnerTimerRef.current) window.clearTimeout(partnerTimerRef.current);
+      timers.forEach((id) => window.clearTimeout(id));
     };
-  }, [rooms, activeRoomCode, screen, profile]);
+  }, [
+    profile?.playerId,
+    activeRoomCode,
+    screen,
+    activeBotRoomStatus,
+    activeBotRoomAuto,
+    activeBotRoomPartnerId,
+    activeBotRoomTurnId,
+    activeBotRoomWord,
+    activeBotRoomMovesLen,
+  ]);
 
   const hasTimeoutCandidate = Boolean(
     profile &&
-      Object.values(rooms).some(
+      (Object.values(rooms).some(
         (r) =>
           r.status === 'active' &&
           !r.autoPartnerEnabled &&
           !isBotPartner(r.partnerPlayer.playerId) &&
           !isWaitingPartner(r.partnerPlayer.playerId)
-      )
+      ) ||
+        (screen === 'board' &&
+          activeBotRoom &&
+          activeBotRoom.status === 'active' &&
+          isBotPartner(activeBotRoom.partnerPlayer.playerId)))
   );
 
-  // Automatic turn pass when the current turn player takes too long to play
+  // Automatic turn pass when the current turn player (human or Miyu) takes too long to play
   useEffect(() => {
-    if (!profile || !hasTimeoutCandidate) return;
+    if (!profile?.playerId || !hasTimeoutCandidate) return;
 
     const checkExpiredTurns = () => {
+      const activeProfile = profileRef.current;
+      const prev = roomsRef.current;
+      if (!activeProfile) return;
+
       const now = Date.now();
-      setRooms((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        for (const room of Object.values(prev)) {
-          if (room.status !== 'active') continue;
+      let changed = false;
+      const next = { ...prev };
+      const notifications: Array<{ timeoutName: string; updated: GameRoom }> = [];
+
+      for (const room of Object.values(prev)) {
+        if (room.status !== 'active') continue;
+        const { me, partner, waitingForPartner, isBot, isMyTurn } = resolveRoomParticipants(
+          room,
+          activeProfile
+        );
+        if (waitingForPartner) continue;
+        // Bot rooms sitting idle in the Hub should not expire in the background
+        if (isBot && (screenRef.current !== 'board' || activeRoomCodeRef.current !== room.code)) {
+          continue;
+        }
+        // Waiting player handles primary expiry at 30s; active human yields after +1.5s fallback; bot expires cleanly at 30s
+        const graceMs = isBot ? 0 : isMyTurn ? 1500 : 0;
+        const updated = passTurnIfExpired(room, now, graceMs);
+        if (updated) {
+          lastLocalMutationRef.current[room.code] = now;
+          next[room.code] = updated;
+          changed = true;
+          broadcastRoomUpdate(updated, activeProfile.playerId);
+          void updateRemoteRoomState(updated);
+
           if (
-            room.autoPartnerEnabled ||
-            isBotPartner(room.partnerPlayer.playerId) ||
-            isWaitingPartner(room.partnerPlayer.playerId)
+            (updated.currentTurnPlayerId === activeProfile.playerId ||
+              updated.currentTurnPlayerId === me.playerId) &&
+            updated.lastTurnPass &&
+            updated.lastTurnPass.fromPlayerId !== activeProfile.playerId &&
+            updated.lastTurnPass.fromPlayerId !== me.playerId
           ) {
-            continue;
-          }
-          // Waiting player handles primary expiry at 30s; active player yields after +1.5s fallback
-          const graceMs = room.currentTurnPlayerId === profile.playerId ? 1500 : 0;
-          const updated = passTurnIfExpired(room, now, graceMs);
-          if (updated) {
-            next[room.code] = updated;
-            changed = true;
-            broadcastRoomUpdate(updated, profile.playerId);
-            void updateRemoteRoomState(updated);
-            if (
-              updated.currentTurnPlayerId === profile.playerId &&
-              updated.lastTurnPass &&
-              updated.lastTurnPass.fromPlayerId !== profile.playerId
-            ) {
-              requestPushPermissionAndNotify(
-                translate('notifications.timeoutTitle', {
-                  name: updated.lastTurnPass.fromPlayerName,
-                }),
-                translate('notifications.timeoutBody', {
-                  current: updated.currentWord,
-                  target: updated.targetWord,
-                })
-              );
-            }
+            const timeoutName =
+              updated.lastTurnPass.fromPlayerName === activeProfile.name
+                ? partner.name
+                : updated.lastTurnPass.fromPlayerName;
+            notifications.push({ timeoutName, updated });
           }
         }
-        if (changed) {
-          roomsRef.current = next;
-          saveRooms(next);
-          return next;
+      }
+
+      if (changed) {
+        roomsRef.current = next;
+        saveRooms(next);
+        setRooms(next);
+        for (const { timeoutName, updated } of notifications) {
+          requestPushPermissionAndNotify(
+            translate('notifications.timeoutTitle', {
+              name: timeoutName,
+            }),
+            translate('notifications.timeoutBody', {
+              current: updated.currentWord,
+              target: updated.targetWord,
+            })
+          );
         }
-        return prev;
-      });
+      }
     };
 
     checkExpiredTurns();
-    const intervalId = window.setInterval(checkExpiredTurns, 1000);
+    const intervalId = window.setInterval(checkExpiredTurns, 500);
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') checkExpiredTurns();
     };
@@ -636,11 +787,12 @@ export function App() {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [profile, hasTimeoutCandidate]);
+  }, [profile?.playerId, hasTimeoutCandidate, screen, activeRoomCode]);
 
   const handleOnboardingComplete = async (name: string, avatarId: AvatarId, color: string) => {
     const uid = await ensureSupabaseSession();
     const newProfile = createInitialProfile(name, avatarId, color, uid ?? undefined);
+    await upsertProfileRemote(newProfile);
     profileRef.current = newProfile;
     setProfile(newProfile);
     const loadedRooms = loadRooms(newProfile);
@@ -652,12 +804,26 @@ export function App() {
         window.history.replaceState({}, '', '/');
       }
       const joined = await joinRoomRemoteOrLocal(codeToJoin, newProfile);
-      const merged = { ...loadedRooms, [joined.code]: joined };
+      const effectiveProfile = joined.migratedProfile ?? newProfile;
+      if (joined.migratedProfile) {
+        profileRef.current = joined.migratedProfile;
+        setProfile(joined.migratedProfile);
+      }
+      if (joined.status === 'full') {
+        const baseRooms = joined.migratedProfile ? loadRooms(effectiveProfile) : loadedRooms;
+        roomsRef.current = baseRooms;
+        setRooms(baseRooms);
+        setScreen('hub');
+        showHubNotice(translate('hub.roomFull'));
+        return;
+      }
+      const baseRooms = joined.migratedProfile ? loadRooms(effectiveProfile) : loadedRooms;
+      const merged = { ...baseRooms, [joined.room.code]: joined.room };
       roomsRef.current = merged;
       saveRooms(merged);
       setRooms(merged);
-      setActiveRoomCode(joined.code);
-      setScreen(joined.status === 'completed' ? 'victory' : 'board');
+      setActiveRoomCode(joined.room.code);
+      setScreen(joined.room.status === 'completed' ? 'victory' : 'board');
     } else {
       roomsRef.current = loadedRooms;
       setRooms(loadedRooms);
@@ -671,7 +837,15 @@ export function App() {
     mode: GameMode
   ): GameRoom => {
     if (!profile) throw new Error('Profile required');
-    const newRoom = createNewRoom(profile, language, wordLength, mode);
+    const newRoom = createNewRoom(
+      profile,
+      language,
+      wordLength,
+      mode,
+      undefined,
+      Object.keys(roomsRef.current)
+    );
+    lastLocalMutationRef.current[newRoom.code] = Date.now();
     const next = { ...roomsRef.current, [newRoom.code]: newRoom };
     roomsRef.current = next;
     saveRooms(next);
@@ -683,13 +857,31 @@ export function App() {
 
   const handleJoinByCode = async (code: string) => {
     if (!profile) return;
-    const room = await joinRoomRemoteOrLocal(code, profile);
-    const next = { ...roomsRef.current, [room.code]: room };
+    const joined = await joinRoomRemoteOrLocal(code, profile);
+    const effectiveProfile = joined.migratedProfile ?? profile;
+    if (joined.migratedProfile) {
+      profileRef.current = joined.migratedProfile;
+      setProfile(joined.migratedProfile);
+    }
+    if (joined.status === 'full') {
+      const baseRooms = joined.migratedProfile
+        ? loadRooms(effectiveProfile)
+        : roomsRef.current;
+      roomsRef.current = baseRooms;
+      setRooms(baseRooms);
+      setScreen('hub');
+      showHubNotice(translate('hub.roomFull'));
+      return;
+    }
+    const baseRooms = joined.migratedProfile
+      ? loadRooms(effectiveProfile)
+      : roomsRef.current;
+    const next = { ...baseRooms, [joined.room.code]: joined.room };
     roomsRef.current = next;
     saveRooms(next);
     setRooms(next);
-    setActiveRoomCode(room.code);
-    setScreen(room.status === 'completed' ? 'victory' : 'board');
+    setActiveRoomCode(joined.room.code);
+    setScreen(joined.room.status === 'completed' ? 'victory' : 'board');
   };
 
   const handleUndoMove = (roomCode: string) => {
@@ -698,21 +890,28 @@ export function App() {
     const room = prev[roomCode];
     if (!room || room.moves.length === 0 || room.status === 'completed') return;
 
+    const { me } = resolveRoomParticipants(room, profile);
+    const matchedById =
+      room.hostPlayer.playerId === profile.playerId ||
+      room.partnerPlayer.playerId === profile.playerId;
+
     const trimmedMoves = room.moves.slice(0, -1);
     const revertedWord =
       trimmedMoves.length > 0 ? trimmedMoves[trimmedMoves.length - 1].word : room.startWord;
 
+    const now = Date.now();
     const updated: GameRoom = {
       ...room,
       currentWord: revertedWord,
       moves: trimmedMoves,
       undoPenaltyCount: room.undoPenaltyCount + 1,
-      currentTurnPlayerId: profile.playerId,
-      turnStartedAt: Date.now(),
+      currentTurnPlayerId: matchedById ? profile.playerId : me.playerId,
+      turnStartedAt: now,
       lastTurnPass: undefined,
       hostPlayer: { ...room.hostPlayer, isTyping: false },
       partnerPlayer: { ...room.partnerPlayer, isTyping: false },
     };
+    lastLocalMutationRef.current[roomCode] = now;
     const next = { ...prev, [roomCode]: updated };
     roomsRef.current = next;
     saveRooms(next);
@@ -747,12 +946,7 @@ export function App() {
     const oldRoom = roomsRef.current[oldRoomCode];
     if (!oldRoom) return;
 
-    const isHost =
-      oldRoom.hostPlayer.playerId === profile.playerId ||
-      (oldRoom.partnerPlayer.playerId !== profile.playerId &&
-        oldRoom.hostPlayer.name === profile.name &&
-        oldRoom.partnerPlayer.name !== profile.name);
-    const otherPlayer = isHost ? oldRoom.partnerPlayer : oldRoom.hostPlayer;
+    const { partner: otherPlayer } = resolveRoomParticipants(oldRoom, profile);
     const rematchMode: GameMode = oldRoom.mode === 'daily' ? 'coop' : oldRoom.mode;
 
     const pair = generateWordPair(
@@ -762,26 +956,17 @@ export function App() {
       oldRoom.startWord
     );
 
-    let newCode = generateRoomCode(pair.startWord);
-    let guard = 0;
-    while (
-      (newCode === oldRoom.code || roomsRef.current[newCode] || newCode === 'WINE-42') &&
-      guard < 20
-    ) {
-      newCode = generateRoomCode(pair.startWord);
-      guard++;
-    }
-    if (newCode === oldRoom.code || roomsRef.current[newCode] || newCode === 'WINE-42') {
-      newCode = `${pair.startWord.slice(0, 4).toUpperCase()}-${Math.floor(100 + Math.random() * 899)}`;
-    }
+    const newCode = generateRoomCode(pair.startWord, Object.keys(roomsRef.current));
 
-    const nextPartner = isWaitingPartner(otherPlayer.playerId)
-      ? createWaitingPartnerPresence()
-      : isBotPartner(otherPlayer.playerId)
-      ? createMiyuPresence()
-      : { ...otherPlayer, isTyping: false };
+    const nextPartner =
+      isWaitingPartner(otherPlayer.playerId) || otherPlayer.playerId === profile.playerId
+        ? createWaitingPartnerPresence()
+        : isBotPartner(otherPlayer.playerId)
+        ? createMiyuPresence()
+        : { ...otherPlayer, isTyping: false };
     const nextAutoBot = isBotPartner(nextPartner.playerId);
 
+    const now = Date.now();
     const freshRoom: GameRoom = {
       code: newCode,
       language: oldRoom.language,
@@ -796,7 +981,7 @@ export function App() {
       undoPenaltyCount: 0,
       hintsUsed: 0,
       currentTurnPlayerId: profile.playerId,
-      turnStartedAt: Date.now(),
+      turnStartedAt: now,
       lastTurnPass: undefined,
       hostPlayer: {
         playerId: profile.playerId,
@@ -805,12 +990,12 @@ export function App() {
         color: profile.color,
         online: true,
         isTyping: false,
-        lastSeen: Date.now(),
+        lastSeen: now,
       },
       partnerPlayer: nextPartner,
       autoPartnerEnabled: nextAutoBot,
       status: 'active',
-      startedAt: Date.now(),
+      startedAt: now,
       completedAt: undefined,
       winnerPlayerId: undefined,
       abandoned: undefined,
@@ -818,6 +1003,7 @@ export function App() {
       abandonedByName: undefined,
     };
 
+    lastLocalMutationRef.current[newCode] = now;
     const next = { ...roomsRef.current, [newCode]: freshRoom };
     roomsRef.current = next;
     saveRooms(next);
@@ -834,13 +1020,15 @@ export function App() {
     if (!activeProfile || !room || room.status !== 'active') return;
     if (!isWaitingPartner(room.partnerPlayer.playerId)) return;
 
+    const now = Date.now();
+    lastLocalMutationRef.current[roomCode] = now;
     const updated: GameRoom = {
       ...room,
       partnerPlayer: createMiyuPresence(),
       autoPartnerEnabled: true,
       currentTurnPlayerId:
         room.currentTurnPlayerId === WAITING_PARTNER_ID ? MIYU_BOT_ID : room.currentTurnPlayerId,
-      turnStartedAt: Date.now(),
+      turnStartedAt: now,
     };
     const next = { ...roomsRef.current, [roomCode]: updated };
     roomsRef.current = next;
@@ -853,10 +1041,12 @@ export function App() {
     const room = roomsRef.current[roomCode];
     if (!activeProfile || !room || room.status === 'completed') return;
 
+    const now = Date.now();
+    lastLocalMutationRef.current[roomCode] = now;
     const endedRoom: GameRoom = {
       ...room,
       status: 'completed',
-      completedAt: Date.now(),
+      completedAt: now,
       winnerPlayerId: undefined,
       abandoned: true,
       abandonedByPlayerId: activeProfile.playerId,
@@ -925,6 +1115,26 @@ export function App() {
     }
   }, [screen, activeRoom?.code, activeRoom?.status, activeRoom?.abandoned]);
 
+  const handleOpenRoom = useCallback((code: string) => {
+    const prevRooms = roomsRef.current;
+    const room = prevRooms[code];
+    if (room && room.status === 'active' && isBotPartner(room.partnerPlayer.playerId)) {
+      const now = Date.now();
+      const refreshed: GameRoom = {
+        ...room,
+        turnStartedAt: now,
+        hostPlayer: { ...room.hostPlayer, isTyping: false },
+        partnerPlayer: { ...room.partnerPlayer, isTyping: false },
+      };
+      const nextRooms = { ...prevRooms, [code]: refreshed };
+      roomsRef.current = nextRooms;
+      saveRooms(nextRooms);
+      setRooms(nextRooms);
+    }
+    setActiveRoomCode(code);
+    setScreen(room?.status === 'completed' ? 'victory' : 'board');
+  }, []);
+
   if (!profile) {
     return (
       <OnboardingScreen
@@ -940,10 +1150,9 @@ export function App() {
         <HubScreen
           profile={profile}
           rooms={Object.values(rooms)}
-          onOpenRoom={(code) => {
-            setActiveRoomCode(code);
-            setScreen(rooms[code]?.status === 'completed' ? 'victory' : 'board');
-          }}
+          joinNotice={hubNotice}
+          onDismissJoinNotice={() => setHubNotice(null)}
+          onOpenRoom={handleOpenRoom}
           onOpenCreateDuel={(daily = false) => {
             setCreateSheetDaily(daily);
             setShowCreateSheet(true);

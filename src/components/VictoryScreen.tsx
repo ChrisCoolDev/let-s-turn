@@ -4,7 +4,7 @@ import { getBadgeDefinitions, getLevelInfo } from '../engine/gamification';
 import { fireVictoryEffect } from '../engine/victoryEffects';
 import { findShortestPath } from '../engine/wordLadder';
 import { useI18n } from '../i18n';
-import { isBotPartner, isWaitingPartner } from '../services/multiplayer';
+import { resolveRoomParticipants } from '../services/multiplayer';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
 import type { GameRoom, PlayerProfile } from '../types/game';
@@ -36,14 +36,11 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   const isOptimal = !isAbandoned && actualSteps <= room.optimalPar;
   const starRating = isAbandoned ? 0 : isOptimal ? 3 : actualSteps <= room.optimalPar + 2 ? 2 : 1;
 
-  const isHost =
-    room.hostPlayer.playerId === profile.playerId ||
-    (room.partnerPlayer.playerId !== profile.playerId &&
-      room.hostPlayer.name === profile.name &&
-      room.partnerPlayer.name !== profile.name);
-  const partner = isHost ? room.partnerPlayer : room.hostPlayer;
-  const partnerWaiting = isWaitingPartner(partner.playerId);
-  const partnerIsBot = isBotPartner(partner.playerId);
+  const {
+    partner,
+    waitingForPartner: partnerWaiting,
+    isBot: partnerIsBot,
+  } = resolveRoomParticipants(room, profile);
   const levelInfo = getLevelInfo(profile.xp, locale);
 
   const durationSec = room.completedAt

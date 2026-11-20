@@ -12,8 +12,8 @@ import { WordTiles } from './WordTiles';
 import { getLevelInfo } from '../engine/gamification';
 import { useI18n } from '../i18n';
 import {
-  isBotPartner,
   isWaitingPartner,
+  resolveRoomParticipants,
   TURN_TIMEOUT_MS,
 } from '../services/multiplayer';
 import { PwaInstallBanner } from './PwaInstallBanner';
@@ -22,9 +22,11 @@ import type { GameRoom, PlayerProfile } from '../types/game';
 interface HubScreenProps {
   profile: PlayerProfile;
   rooms: GameRoom[];
+  joinNotice?: string | null;
+  onDismissJoinNotice?: () => void;
   onOpenRoom: (roomCode: string) => void;
   onOpenCreateDuel: (daily?: boolean) => void;
-  onJoinByCode: (code: string) => void;
+  onJoinByCode: (code: string) => Promise<void> | void;
   onOpenCollection: () => void;
 }
 
@@ -164,6 +166,8 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
 export const HubScreen: React.FC<HubScreenProps> = ({
   profile,
   rooms,
+  joinNotice,
+  onDismissJoinNotice,
   onOpenRoom,
   onOpenCreateDuel,
   onJoinByCode,
@@ -180,8 +184,8 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   const activeRooms = rooms
     .filter((r) => r.status === 'active')
     .sort((a, b) => {
-      const aMyTurn = a.currentTurnPlayerId === profile.playerId ? 1 : 0;
-      const bMyTurn = b.currentTurnPlayerId === profile.playerId ? 1 : 0;
+      const aMyTurn = resolveRoomParticipants(a, profile).isMyTurn ? 1 : 0;
+      const bMyTurn = resolveRoomParticipants(b, profile).isMyTurn ? 1 : 0;
       if (aMyTurn !== bMyTurn) return bMyTurn - aMyTurn;
       return b.startedAt - a.startedAt;
     });
@@ -314,6 +318,26 @@ export const HubScreen: React.FC<HubScreenProps> = ({
         </div>
       </div>
 
+      {/* Alerte éventuelle (ex : salon complet) */}
+      {joinNotice && (
+        <div
+          role="alert"
+          className="animate-pop-in mt-3.5 flex items-center justify-between gap-2 rounded-2xl border-2 border-[var(--duo-red)] bg-[var(--duo-red-bg)] px-4 py-2.5 text-sm font-extrabold text-[var(--duo-red-text)]"
+        >
+          <span>{joinNotice}</span>
+          {onDismissJoinNotice && (
+            <button
+              type="button"
+              onClick={onDismissJoinNotice}
+              className="rounded-lg p-1 hover:bg-black/5"
+              aria-label={t('common.close')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Zone 2 : Parties en cours (Asynchrone & Temps réel) */}
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between">
@@ -344,15 +368,12 @@ export const HubScreen: React.FC<HubScreenProps> = ({
         ) : (
           <div className="space-y-3">
             {activeRooms.map((room) => {
-              const isHost =
-                room.hostPlayer.playerId === profile.playerId ||
-                (room.partnerPlayer.playerId !== profile.playerId &&
-                  room.hostPlayer.name === profile.name &&
-                  room.partnerPlayer.name !== profile.name);
-              const partner = isHost ? room.partnerPlayer : room.hostPlayer;
-              const waiting = isWaitingPartner(partner.playerId);
-              const isBot = isBotPartner(partner.playerId);
-              const isMyTurn = room.currentTurnPlayerId === profile.playerId;
+              const {
+                partner,
+                waitingForPartner: waiting,
+                isBot,
+                isMyTurn,
+              } = resolveRoomParticipants(room, profile);
               const moves = room.moves.length + room.undoPenaltyCount;
               const overPar = moves > room.optimalPar;
               const matched = room.currentWord
