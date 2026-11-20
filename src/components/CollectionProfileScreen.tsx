@@ -12,12 +12,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import {
-  BADGE_DEFINITIONS,
-  PARTICLE_SHOP_ITEMS,
-  THEME_SHOP_ITEMS,
+  getBadgeDefinitions,
   getLevelInfo,
+  getParticleShopItems,
+  getThemeShopItems,
 } from '../engine/gamification';
+import { isPlural, useI18n, type TranslationKey } from '../i18n';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
+import { LanguageToggle } from './LanguageToggle';
 import { WordTiles } from './WordTiles';
 import type {
   ParticleEffectId,
@@ -26,7 +28,11 @@ import type {
   ThemeId,
 } from '../types/game';
 
-function formatChainDate(timestampMs: number): string {
+function formatChainDate(
+  timestampMs: number,
+  intlLocale: string,
+  t: (key: TranslationKey) => string
+): string {
   const target = new Date(timestampMs);
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -36,9 +42,9 @@ function formatChainDate(timestampMs: number): string {
     target.getDate()
   ).getTime();
   const diffDays = Math.round((startOfToday - startOfTarget) / 86400000);
-  if (diffDays === 0) return "Aujourd'hui";
-  if (diffDays === 1) return 'Hier';
-  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(target);
+  if (diffDays === 0) return t('profile.today');
+  if (diffDays === 1) return t('profile.yesterday');
+  return new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'short' }).format(target);
 }
 
 interface StatsSummaryCardProps {
@@ -52,12 +58,17 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
   winRate,
   optimalRate,
 }) => {
+  const { locale, t } = useI18n();
   const headlineStats = [
-    { value: `${profile.gamesWon}`, label: 'Victoires' },
-    { value: profile.gamesPlayed > 0 ? `${winRate}%` : '—', label: 'Réussite' },
-    { value: profile.fastestWinSeconds ? `${profile.fastestWinSeconds}s` : '—', label: 'Record' },
-    { value: `${profile.uniqueWordsUsed.length}`, label: 'Mots' },
+    { value: `${profile.gamesWon}`, label: t('profile.statWins') },
+    { value: profile.gamesPlayed > 0 ? `${winRate}%` : '—', label: t('profile.statWinRate') },
+    { value: profile.fastestWinSeconds ? `${profile.fastestWinSeconds}s` : '—', label: t('profile.statBest') },
+    { value: `${profile.uniqueWordsUsed.length}`, label: t('profile.statWords') },
   ];
+
+  const gamesLabel = t(isPlural(profile.gamesPlayed, locale) ? 'profile.gameMany' : 'profile.gameOne', {
+    count: profile.gamesPlayed,
+  });
 
   return (
     <div className="duo-card p-4">
@@ -80,7 +91,7 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
       <div className="mt-4 border-t pt-3.5" style={{ borderColor: 'var(--border-tile)' }}>
         <div className="flex items-baseline justify-between gap-2 text-sm">
           <span className="font-extrabold" style={{ color: 'var(--text-primary)' }}>
-            Victoires au Par
+            {t('profile.parWins')}
           </span>
           <span className="font-black tabular-nums" style={{ color: 'var(--duo-green-shadow)' }}>
             {profile.optimalWins} / {profile.gamesWon}
@@ -104,8 +115,11 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
         </div>
 
         <p className="mt-2.5 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
-          {profile.noHintWins} sans indice · {profile.gamesPlayed} parties ·{' '}
-          {profile.longestWordSolved} lettres max
+          {t('profile.statsFooter', {
+            noHint: profile.noHintWins,
+            games: gamesLabel,
+            letters: profile.longestWordSolved,
+          })}
         </p>
       </div>
     </div>
@@ -113,6 +127,7 @@ const StatsSummaryCard: React.FC<StatsSummaryCardProps> = ({
 };
 
 const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
+  const { intlLocale, t } = useI18n();
   const isOptimal = chain.actualSteps <= chain.optimalSteps;
   const accentVar = isOptimal ? '--duo-green' : '--duo-orange';
   const accentShadowVar = isOptimal ? '--duo-green-shadow' : '--duo-orange-shadow';
@@ -122,8 +137,10 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
       {/* Méta duo & score Par */}
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
-          Avec <span style={{ color: 'var(--text-primary)' }}>{chain.partnerName}</span> ·{' '}
-          {chain.language === 'FR' ? 'FR' : 'EN'} · {formatChainDate(chain.completedAt)}
+          {t('profile.withPartner')}{' '}
+          <span style={{ color: 'var(--text-primary)' }}>{chain.partnerName}</span> ·{' '}
+          {chain.language === 'FR' ? 'FR' : 'EN'} ·{' '}
+          {formatChainDate(chain.completedAt, intlLocale, t)}
         </p>
         <span
           className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-0.5 text-[13px] font-black"
@@ -135,10 +152,10 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
           {isOptimal ? (
             <>
               <Check className="h-3.5 w-3.5 stroke-[3]" />
-              Par {chain.optimalSteps}
+              {t('common.parLabel', { par: chain.optimalSteps })}
             </>
           ) : (
-            `${chain.actualSteps} / Par ${chain.optimalSteps}`
+            t('profile.parRatio', { actual: chain.actualSteps, optimal: chain.optimalSteps })
           )}
         </span>
       </div>
@@ -203,12 +220,12 @@ const SavedChainCard: React.FC<{ chain: SavedChainRecord }> = ({ chain }) => {
 
 const PARTICLE_VISUALS: Record<
   ParticleEffectId,
-  { icon: LucideIcon; color: string; filled: boolean; label: string }
+  { icon: LucideIcon; color: string; filled: boolean }
 > = {
-  confetti: { icon: PartyPopper, color: '#ff9600', filled: false, label: 'Confettis' },
-  sparkles: { icon: Sparkles, color: '#ffc800', filled: true, label: 'Étoiles' },
-  hearts: { icon: Heart, color: '#ff4b8b', filled: true, label: 'Cœurs' },
-  lightning: { icon: Zap, color: '#1cb0f6', filled: true, label: 'Éclairs' },
+  confetti: { icon: PartyPopper, color: '#ff9600', filled: false },
+  sparkles: { icon: Sparkles, color: '#ffc800', filled: true },
+  hearts: { icon: Heart, color: '#ff4b8b', filled: true },
+  lightning: { icon: Zap, color: '#1cb0f6', filled: true },
 };
 
 interface CollectionProfileScreenProps {
@@ -224,10 +241,15 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
   onBuyOrActivateTheme,
   onBuyOrActivateParticle,
 }) => {
+  const { locale, t } = useI18n();
   const [activeTab, setActiveTab] = useState<'badges' | 'stats' | 'shop'>('badges');
   const [shopNotice, setShopNotice] = useState<string | null>(null);
 
-  const levelInfo = getLevelInfo(profile.xp);
+  const levelInfo = getLevelInfo(profile.xp, locale);
+  const badgeDefinitions = getBadgeDefinitions(locale);
+  const themeShopItems = getThemeShopItems(locale);
+  const particleShopItems = getParticleShopItems(locale);
+
   const winRate =
     profile.gamesPlayed > 0
       ? Math.round((profile.gamesWon / profile.gamesPlayed) * 100)
@@ -240,9 +262,9 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
   const handleThemeAction = (themeId: ThemeId, price: number, name: string) => {
     const ok = onBuyOrActivateTheme(themeId, price);
     if (ok) {
-      setShopNotice(`Thème "${name}" activé !`);
+      setShopNotice(t('profile.noticeThemeActivated', { name }));
     } else {
-      setShopNotice(`Il te manque des ⭐ pour débloquer "${name}" !`);
+      setShopNotice(t('profile.noticeNotEnoughStars', { name }));
     }
     window.setTimeout(() => setShopNotice(null), 2400);
   };
@@ -250,12 +272,14 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
   const handleParticleAction = (particleId: ParticleEffectId, price: number, name: string) => {
     const ok = onBuyOrActivateParticle(particleId, price);
     if (ok) {
-      setShopNotice(`Effet "${name}" équipé !`);
+      setShopNotice(t('profile.noticeParticleEquipped', { name }));
     } else {
-      setShopNotice(`Il te manque des ⭐ pour débloquer "${name}" !`);
+      setShopNotice(t('profile.noticeNotEnoughStars', { name }));
     }
     window.setTimeout(() => setShopNotice(null), 2400);
   };
+
+  const savedCount = profile.savedBestChains.length;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-8 pt-4">
@@ -266,12 +290,12 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
           onClick={onBack}
           className="flex h-10 w-10 items-center justify-center rounded-xl border-2"
           style={{ borderColor: 'var(--border-tile)', color: 'var(--text-primary)' }}
-          aria-label="Retour"
+          aria-label={t('common.back')}
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>
-          Collection &amp; Profil
+          {t('profile.title')}
         </h1>
         <div
           className="flex items-center gap-1 rounded-xl border-2 px-2.5 py-1.5"
@@ -297,11 +321,12 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
               style={{ backgroundColor: 'var(--duo-orange-bg)', color: 'var(--duo-orange)' }}
             >
               <FigmaFlameIcon size={14} />
-              {profile.streak}j
+              {profile.streak}
+              {t('common.streakUnit')}
             </span>
           </div>
           <p className="text-sm font-extrabold" style={{ color: 'var(--duo-blue-text)' }}>
-            Niveau {levelInfo.level} · {levelInfo.title}
+            {t('common.levelFull', { level: levelInfo.level })} · {levelInfo.title}
           </p>
           <div
             className="mt-2 h-2.5 w-full overflow-hidden rounded-full"
@@ -318,12 +343,15 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
         </div>
       </div>
 
+      {/* Sélecteur de langue */}
+      <LanguageToggle variant="row" />
+
       {/* Onglets Duolingo */}
       <div className="mt-4 grid grid-cols-3 gap-2">
         {[
-          { id: 'badges' as const, label: 'Badges' },
-          { id: 'stats' as const, label: 'Stats Duo' },
-          { id: 'shop' as const, label: 'Vestiaire' },
+          { id: 'badges' as const, label: t('profile.tabBadges') },
+          { id: 'stats' as const, label: t('profile.tabStats') },
+          { id: 'shop' as const, label: t('profile.tabShop') },
         ].map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -345,9 +373,12 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
       {activeTab === 'badges' && (
         <section className="mt-4 space-y-2.5">
           <p className="text-sm font-extrabold" style={{ color: 'var(--text-muted)' }}>
-            {profile.unlockedBadges.length} / {BADGE_DEFINITIONS.length} badges débloqués
+            {t('profile.badgesUnlockedCount', {
+              unlocked: profile.unlockedBadges.length,
+              total: badgeDefinitions.length,
+            })}
           </p>
-          {BADGE_DEFINITIONS.map((badge) => {
+          {badgeDefinitions.map((badge) => {
             const unlocked = profile.unlockedBadges.includes(badge.id);
             return (
               <div
@@ -377,7 +408,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                           color: 'var(--duo-green-text)',
                         }}
                       >
-                        Débloqué
+                        {t('profile.badgeUnlocked')}
                       </span>
                     ) : (
                       <span
@@ -386,8 +417,8 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                           backgroundColor: 'var(--bg-muted)',
                           color: 'var(--text-muted)',
                         }}
-                        aria-label="Verrouillé"
-                        title="Verrouillé"
+                        aria-label={t('profile.badgeLocked')}
+                        title={t('profile.badgeLocked')}
                       >
                         <Lock className="h-3.5 w-3.5" />
                       </span>
@@ -416,26 +447,27 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                 className="text-sm font-black uppercase tracking-wider"
                 style={{ color: 'var(--text-muted)' }}
               >
-                Dernières chaînes
+                {t('profile.recentChains')}
               </h3>
-              {profile.savedBestChains.length > 0 && (
+              {savedCount > 0 && (
                 <span
                   className="text-[13px] font-extrabold"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  {profile.savedBestChains.length} enregistrée
-                  {profile.savedBestChains.length > 1 ? 's' : ''}
+                  {t(isPlural(savedCount, locale) ? 'profile.savedMany' : 'profile.savedOne', {
+                    count: savedCount,
+                  })}
                 </span>
               )}
             </div>
 
-            {profile.savedBestChains.length === 0 ? (
+            {savedCount === 0 ? (
               <div className="duo-card p-5 text-center">
                 <p className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
-                  Aucune chaîne enregistrée
+                  {t('profile.emptyChainsTitle')}
                 </p>
                 <p className="mt-1 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
-                  Termine une partie en duo pour conserver votre parcours ici.
+                  {t('profile.emptyChainsSub')}
                 </p>
               </div>
             ) : (
@@ -467,10 +499,10 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
               className="mb-3 text-[13px] font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
-              Thèmes
+              {t('profile.sectionThemes')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              {THEME_SHOP_ITEMS.map((item) => {
+              {themeShopItems.map((item) => {
                 const unlocked = profile.unlockedThemes.includes(item.id);
                 const active = profile.activeTheme === item.id;
                 return (
@@ -533,7 +565,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                           style={{ color: 'var(--duo-green-text)' }}
                         >
                           <Check className="h-4 w-4 stroke-[3]" />
-                          Équipé
+                          {t('profile.equipped')}
                         </span>
                       ) : unlocked ? (
                         <button
@@ -541,7 +573,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                           onClick={() => handleThemeAction(item.id, 0, item.name)}
                           className="duo-btn duo-btn-white h-10 w-full text-sm uppercase tracking-wide"
                         >
-                          Équiper
+                          {t('profile.equip')}
                         </button>
                       ) : (
                         <button
@@ -566,10 +598,10 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
               className="mb-3 text-sm font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
-              Effets de victoire
+              {t('profile.sectionVictoryEffects')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              {PARTICLE_SHOP_ITEMS.map((item) => {
+              {particleShopItems.map((item) => {
                 const unlocked = profile.unlockedParticles.includes(item.id);
                 const active = profile.activeParticle === item.id;
                 const visual = PARTICLE_VISUALS[item.id];
@@ -601,7 +633,7 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                         className="block truncate text-[15px] font-black"
                         style={{ color: 'var(--text-primary)' }}
                       >
-                        {visual.label}
+                        {t(`particle.${item.id}.short` as TranslationKey)}
                       </span>
                       <span
                         className="mt-0.5 flex items-center gap-1 text-[13px] font-extrabold"
@@ -615,10 +647,10 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                       >
                         {active ? (
                           <>
-                            <Check className="h-3 w-3 stroke-[3]" /> Équipé
+                            <Check className="h-3 w-3 stroke-[3]" /> {t('profile.equipped')}
                           </>
                         ) : unlocked ? (
-                          'Équiper'
+                          t('profile.equip')
                         ) : (
                           <>
                             <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />

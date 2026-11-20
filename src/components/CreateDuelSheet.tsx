@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowRight, Check, Copy, Play, Shuffle, Sparkles, X } from 'lucide-react';
 import { ShareIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
+import { useI18n } from '../i18n';
 import type { GameMode, GameRoom, Language, WordLength } from '../types/game';
 
 interface CreateDuelSheetProps {
@@ -90,7 +91,8 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
   onCreateRoom,
   onEnterRoom,
 }) => {
-  const [language, setLanguage] = useState<Language>('EN');
+  const { locale, t, formatMoves } = useI18n();
+  const [language, setLanguage] = useState<Language>(() => (locale === 'fr' ? 'FR' : 'EN'));
   const [wordLength, setWordLength] = useState<WordLength>(4);
   const [isDaily, setIsDaily] = useState(defaultDaily);
   const [createdRoom, setCreatedRoom] = useState<GameRoom | null>(null);
@@ -136,11 +138,15 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
 
   const handleShare = async () => {
     if (!createdRoom) return;
-    const shareText = `Rejoins mon défi Let's Turn (${createdRoom.startWord} → ${createdRoom.targetWord}) ! Code : ${createdRoom.code}`;
+    const shareText = t('createDuel.shareText', {
+      start: createdRoom.startWord,
+      target: createdRoom.targetWord,
+      code: createdRoom.code,
+    });
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share({
-          title: "Let's Turn — Défi Duo",
+          title: t('createDuel.shareTitle'),
           text: shareText,
           url: inviteUrl,
         });
@@ -183,14 +189,14 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
             className="text-lg font-black"
             style={{ color: 'var(--text-primary)' }}
           >
-            {createdRoom ? 'Salon prêt' : 'Configurer un duel'}
+            {createdRoom ? t('createDuel.titleReady') : t('createDuel.titleSetup')}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:bg-black/5"
             style={{ color: 'var(--text-muted)' }}
-            aria-label="Fermer"
+            aria-label={t('common.close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -228,27 +234,27 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                 style={{ color: 'var(--text-muted)' }}
               >
                 {isDaily
-                  ? `Mot secret du jour · Commun pendant 24 h (${wordLength} lettres)`
-                  : `Chaîne en ${wordLength} lettres · 4 à 7 coups optimaux`}
+                  ? t('createDuel.previewDaily', { count: wordLength })
+                  : t('createDuel.previewRandom', { count: wordLength })}
               </p>
             </div>
 
             {/* Langue du dictionnaire */}
             <div>
-              <SectionLabel>Langue</SectionLabel>
+              <SectionLabel>{t('createDuel.sectionLanguage')}</SectionLabel>
               <div className="grid grid-cols-2 gap-2.5">
                 <OptionTile
                   active={language === 'EN'}
                   accentVar="--duo-blue"
                   badge="EN"
-                  title="Anglais"
+                  title={t('common.english')}
                   onClick={() => setLanguage('EN')}
                 />
                 <OptionTile
                   active={language === 'FR'}
                   accentVar="--duo-blue"
                   badge="FR"
-                  title="Français"
+                  title={t('common.french')}
                   onClick={() => setLanguage('FR')}
                 />
               </div>
@@ -256,22 +262,22 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
 
             {/* Longueur des mots */}
             <div>
-              <SectionLabel>Longueur</SectionLabel>
+              <SectionLabel>{t('createDuel.sectionLength')}</SectionLabel>
               <div className="grid grid-cols-2 gap-2.5">
                 <OptionTile
                   active={wordLength === 4}
                   accentVar="--duo-green"
                   badge="4"
-                  title="4 lettres"
-                  subtitle="Parties rapides"
+                  title={t('createDuel.len4Title')}
+                  subtitle={t('createDuel.len4Sub')}
                   onClick={() => setWordLength(4)}
                 />
                 <OptionTile
                   active={wordLength === 5}
                   accentVar="--duo-green"
                   badge="5"
-                  title="5 lettres"
-                  subtitle="Plus corsé"
+                  title={t('createDuel.len5Title')}
+                  subtitle={t('createDuel.len5Sub')}
                   onClick={() => setWordLength(5)}
                 />
               </div>
@@ -279,22 +285,22 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
 
             {/* Format de partie */}
             <div>
-              <SectionLabel>Format</SectionLabel>
+              <SectionLabel>{t('createDuel.sectionFormat')}</SectionLabel>
               <div className="grid grid-cols-2 gap-2.5">
                 <OptionTile
                   active={!isDaily}
                   accentVar="--duo-green"
                   badge={<Shuffle className="h-3.5 w-3.5 stroke-[2.5]" />}
-                  title="Aléatoire"
-                  subtitle="Nouvelle paire"
+                  title={t('createDuel.formatRandomTitle')}
+                  subtitle={t('createDuel.formatRandomSub')}
                   onClick={() => setIsDaily(false)}
                 />
                 <OptionTile
                   active={isDaily}
                   accentVar="--duo-orange"
                   badge={<Sparkles className="h-3.5 w-3.5 stroke-[2.5]" />}
-                  title="Du jour"
-                  subtitle="Commun 24 h"
+                  title={t('createDuel.formatDailyTitle')}
+                  subtitle={t('createDuel.formatDailySub')}
                   onClick={() => setIsDaily(true)}
                 />
               </div>
@@ -305,7 +311,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
               onClick={handleValidate}
               className="duo-btn duo-btn-green flex w-full items-center justify-center gap-2 py-3.5 text-sm"
             >
-              {isDaily ? 'Ouvrir le défi du jour' : 'Créer le duel'}
+              {isDaily ? t('createDuel.ctaDaily') : t('createDuel.ctaDuel')}
             </button>
           </div>
         ) : (
@@ -321,13 +327,13 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
               <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider">
                 <span style={{ color: 'var(--text-muted)' }}>
                   {createdRoom.mode === 'daily'
-                    ? `Défi du jour · ${createdRoom.wordLength} lettres`
-                    : `${createdRoom.language === 'FR' ? 'Français' : 'Anglais'} · ${
-                        createdRoom.wordLength
-                      } lettres`}
+                    ? t('createDuel.dailyHeader', { count: createdRoom.wordLength })
+                    : `${
+                        createdRoom.language === 'FR' ? t('common.french') : t('common.english')
+                      } · ${t('common.letters', { count: createdRoom.wordLength })}`}
                 </span>
                 <span style={{ color: 'var(--duo-green-shadow)' }}>
-                  Par {createdRoom.optimalPar} coups
+                  {t('createDuel.parMoves', { moves: formatMoves(createdRoom.optimalPar) })}
                 </span>
               </div>
 
@@ -359,7 +365,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                     className="block text-[10px] font-black uppercase tracking-wider"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    Code du salon
+                    {t('createDuel.roomCode')}
                   </span>
                   <span
                     className="text-sm font-black tracking-widest"
@@ -384,14 +390,14 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                   {copyState === 'copied' ? (
                     <>
                       <Check className="h-3.5 w-3.5 stroke-[3]" />
-                      Copié
+                      {t('createDuel.copied')}
                     </>
                   ) : copyState === 'failed' ? (
-                    'Copie bloquée'
+                    t('createDuel.copyFailed')
                   ) : (
                     <>
                       <Copy className="h-3.5 w-3.5" />
-                      Copier le lien
+                      {t('createDuel.copyLink')}
                     </>
                   )}
                 </span>
@@ -403,10 +409,10 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                 type="button"
                 onClick={handleShare}
                 className="duo-btn duo-btn-white flex items-center justify-center gap-2 px-4 py-3.5 text-sm"
-                aria-label="Partager l'invitation"
+                aria-label={t('createDuel.shareAria')}
               >
                 <ShareIcon className="h-4 w-4" />
-                Inviter
+                {t('createDuel.invite')}
               </button>
 
               <button
@@ -415,7 +421,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                 className="duo-btn duo-btn-green flex items-center justify-center gap-2 py-3.5 text-sm"
               >
                 <Play className="h-4 w-4 fill-white" />
-                Jouer
+                {t('common.play')}
               </button>
             </div>
           </div>

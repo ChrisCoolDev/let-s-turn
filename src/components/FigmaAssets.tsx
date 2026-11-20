@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../i18n';
 import type { AvatarId } from '../types/game';
 
 interface FlameProps {
@@ -282,6 +283,8 @@ export const FigmaAvatar: React.FC<AvatarProps> = ({
   isBot = false,
   className = '',
 }) => {
+  const { t } = useI18n();
+
   if (empty) {
     const iconSize = Math.max(18, Math.round(size * 0.46));
     return (
@@ -294,7 +297,7 @@ export const FigmaAvatar: React.FC<AvatarProps> = ({
           borderColor: 'var(--border-tile)',
           color: 'var(--text-muted)',
         }}
-        aria-label="Partenaire en attente"
+        aria-label={t('common.waitingPartnerAria')}
       >
         <svg
           width={iconSize}
@@ -358,7 +361,7 @@ export const FigmaAvatar: React.FC<AvatarProps> = ({
             backgroundColor: 'var(--duo-green)',
             borderColor: ringGapColor,
           }}
-          title="En ligne"
+          title={t('common.online')}
         />
       )}
     </div>

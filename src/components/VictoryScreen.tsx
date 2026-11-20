@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { ArrowRight, Award, Star } from 'lucide-react';
-import { BADGE_DEFINITIONS, getLevelInfo } from '../engine/gamification';
+import { getBadgeDefinitions, getLevelInfo } from '../engine/gamification';
 import { findShortestPath } from '../engine/wordLadder';
+import { useI18n } from '../i18n';
 import { isBotPartner, isWaitingPartner } from '../services/multiplayer';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
@@ -27,6 +28,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   onRematch,
   onBackToHub,
 }) => {
+  const { locale, t, formatMoves } = useI18n();
   const [xpBarAnimated, setXpBarAnimated] = useState(false);
 
   const actualSteps = room.moves.length + room.undoPenaltyCount;
@@ -42,7 +44,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   const partner = isHost ? room.partnerPlayer : room.hostPlayer;
   const partnerWaiting = isWaitingPartner(partner.playerId);
   const partnerIsBot = isBotPartner(partner.playerId);
-  const levelInfo = getLevelInfo(profile.xp);
+  const levelInfo = getLevelInfo(profile.xp, locale);
 
   const durationSec = room.completedAt
     ? Math.max(1, Math.round((room.completedAt - room.startedAt) / 1000))
@@ -89,8 +91,8 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
 
   const unlockedBadges = useMemo(() => {
     if (isAbandoned) return [];
-    return BADGE_DEFINITIONS.filter((b) => newlyUnlockedBadgeIds.includes(b.id));
-  }, [newlyUnlockedBadgeIds, isAbandoned]);
+    return getBadgeDefinitions(locale).filter((b) => newlyUnlockedBadgeIds.includes(b.id));
+  }, [newlyUnlockedBadgeIds, isAbandoned, locale]);
 
   const chainWords = useMemo(() => {
     return [room.startWord, ...room.moves.map((m) => m.word)];
@@ -106,6 +108,38 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
       ]
     );
   }, [isAbandoned, room.optimalPath, room.startWord, room.targetWord, room.language]);
+
+  const headline = isAbandoned
+    ? t('victory.titleAbandoned')
+    : starRating === 3
+    ? t('victory.titlePerfect')
+    : starRating === 2
+    ? t('victory.titleGreat')
+    : t('victory.titleCompleted');
+
+  const subtitle = isAbandoned
+    ? room.abandonedByName && room.abandonedByPlayerId !== profile.playerId
+      ? t('victory.subtitleAbandonedBy', {
+          name: room.abandonedByName,
+          start: room.startWord,
+          target: room.targetWord,
+        })
+      : t('victory.subtitleAbandonedSelf', {
+          start: room.startWord,
+          target: room.targetWord,
+        })
+    : partnerWaiting
+    ? t('victory.subtitleWonSolo', {
+        start: room.startWord,
+        target: room.targetWord,
+        duration: durationSec,
+      })
+    : t('victory.subtitleWonWith', {
+        start: room.startWord,
+        target: room.targetWord,
+        name: partner.name,
+        duration: durationSec,
+      });
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-between px-4 pb-6 pt-6">
@@ -133,21 +167,11 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
             className="text-[28px] font-black leading-tight tracking-tight"
             style={{ color: 'var(--text-primary)' }}
           >
-            {isAbandoned
-              ? 'Partie terminée'
-              : starRating === 3
-              ? 'Parfait ! Score optimal !'
-              : starRating === 2
-              ? 'Super duo ! Bien joué !'
-              : 'Chaîne complétée !'}
+            {headline}
           </h1>
 
           <p className="mt-1.5 text-[15px] font-bold" style={{ color: 'var(--text-muted)' }}>
-            {isAbandoned
-              ? room.abandonedByName && room.abandonedByPlayerId !== profile.playerId
-                ? `${room.abandonedByName} a mis fin à la partie · ${room.startWord} → ${room.targetWord}`
-                : `Mot cible non trouvé · ${room.startWord} → ${room.targetWord}`
-              : `${room.startWord} → ${room.targetWord} avec ${partner.name} en ${durationSec}s`}
+            {subtitle}
           </p>
 
           {/* 3 étoiles Duolingo */}
@@ -188,7 +212,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 {actualSteps}
               </p>
               <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
-                Coups
+                {t('victory.statMoves')}
               </p>
             </div>
             <div>
@@ -199,7 +223,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 {room.optimalPar}
               </p>
               <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
-                Par BFS
+                {t('victory.statPar')}
               </p>
             </div>
             <div>
@@ -210,7 +234,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 {durationSec}s
               </p>
               <p className="mt-1 text-[13px] font-bold" style={{ color: 'var(--text-muted)' }}>
-                Temps
+                {t('victory.statTime')}
               </p>
             </div>
           </div>
@@ -237,7 +261,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                     className="mb-2 text-center text-[11px] font-black uppercase tracking-wider"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    Votre essai ({room.moves.length} coup{room.moves.length > 1 ? 's' : ''})
+                    {t('victory.yourAttempt', { moves: formatMoves(room.moves.length) })}
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-1.5">
                     {chainWords.map((word, idx) => {
@@ -284,7 +308,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                   className="mb-2 text-center text-[11px] font-black uppercase tracking-wider"
                   style={{ color: 'var(--duo-green-text)' }}
                 >
-                  Solution optimale ({room.optimalPar} coups)
+                  {t('victory.optimalSolution', { moves: formatMoves(room.optimalPar) })}
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-1.5">
                   {optimalSolution.map((word, idx) => {
@@ -383,7 +407,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 <FigmaFlameIcon size={18} />+{earnedXp} XP · +{earnedStars} ⭐
               </span>
               <span className="text-sm" style={{ color: 'var(--duo-blue-text)' }}>
-                Niv. {levelInfo.level} · {levelInfo.title}
+                {t('common.levelShort', { level: levelInfo.level })} · {levelInfo.title}
               </span>
             </div>
             <div
@@ -417,7 +441,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               style={{ color: 'var(--duo-gold-text)' }}
             >
               <Award className="h-4 w-4" style={{ color: 'var(--duo-orange)' }} />
-              Nouveau badge débloqué !
+              {t('victory.newBadge')}
             </div>
             <div className="mt-2.5 space-y-2.5">
               {unlockedBadges.map((badge) => (
@@ -450,7 +474,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           onClick={() => onRematch(room.code)}
           className="duo-btn duo-btn-green w-full py-4 text-base"
         >
-          Revanche immédiate
+          {t('victory.rematch')}
         </button>
 
         <button
@@ -458,7 +482,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           onClick={onBackToHub}
           className="duo-btn duo-btn-white w-full py-3.5 text-[15px]"
         >
-          Accueil
+          {t('victory.home')}
         </button>
       </div>
     </div>

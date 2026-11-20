@@ -7,6 +7,7 @@ import { OnboardingScreen } from './components/OnboardingScreen';
 import { VictoryScreen } from './components/VictoryScreen';
 import { evaluateNewBadges } from './engine/gamification';
 import { generateWordPair, isOneLetterDiff } from './engine/wordLadder';
+import { translate } from './i18n';
 import {
   bootstrapSupabaseState,
   broadcastRoomUpdate,
@@ -536,8 +537,15 @@ export function App() {
         void updateRemoteRoomState(updated);
 
         requestPushPermissionAndNotify(
-          `${partner.name} a joué ${move.word} !`,
-          `${partner.name} a changé ${move.fromChar} en ${move.toChar}. À ton tour !`
+          translate('notifications.partnerMovedTitle', {
+            name: partner.name,
+            word: move.word,
+          }),
+          translate('notifications.partnerMovedBody', {
+            name: partner.name,
+            from: move.fromChar,
+            to: move.toChar,
+          })
         );
 
         if (reachedTarget) {
@@ -597,8 +605,13 @@ export function App() {
               updated.lastTurnPass.fromPlayerId !== profile.playerId
             ) {
               requestPushPermissionAndNotify(
-                `${updated.lastTurnPass.fromPlayerName} a trop tardé`,
-                `Le tour passe à toi (${updated.currentWord} → ${updated.targetWord}) !`
+                translate('notifications.timeoutTitle', {
+                  name: updated.lastTurnPass.fromPlayerName,
+                }),
+                translate('notifications.timeoutBody', {
+                  current: updated.currentWord,
+                  target: updated.targetWord,
+                })
               );
             }
           }

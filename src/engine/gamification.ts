@@ -1,3 +1,4 @@
+import { translate, type Locale, type TranslationKey } from '../i18n';
 import type { BadgeDefinition, PlayerProfile, ThemeShopItem } from '../types/game';
 
 export const PLAYER_COLORS = [
@@ -123,20 +124,45 @@ export interface LevelInfo {
   progressPct: number;
 }
 
-const LEVEL_TITLES = [
-  'Apprenti des Lettres',
-  'Tisseur de Mots',
-  'Éclaireur Lexical',
-  'Alchimiste des Mots',
-  'Maître des Chaînes',
-  'Légende du Duo',
-];
+const LEVEL_COUNT = 6;
 
-export function getLevelInfo(xp: number): LevelInfo {
+export function getPlayerColors(locale: Locale) {
+  return PLAYER_COLORS.map((c) => ({
+    ...c,
+    name: translate(`color.${c.id}` as TranslationKey, undefined, locale),
+  }));
+}
+
+export function getBadgeDefinitions(locale: Locale): BadgeDefinition[] {
+  return BADGE_DEFINITIONS.map((b) => ({
+    ...b,
+    title: translate(`badge.${b.id}.title` as TranslationKey, undefined, locale),
+    description: translate(`badge.${b.id}.description` as TranslationKey, undefined, locale),
+    conditionLabel: translate(`badge.${b.id}.condition` as TranslationKey, undefined, locale),
+  }));
+}
+
+export function getThemeShopItems(locale: Locale): ThemeShopItem[] {
+  return THEME_SHOP_ITEMS.map((item) => ({
+    ...item,
+    name: translate(`theme.${item.id}.name` as TranslationKey, undefined, locale),
+    description: translate(`theme.${item.id}.description` as TranslationKey, undefined, locale),
+  }));
+}
+
+export function getParticleShopItems(locale: Locale) {
+  return PARTICLE_SHOP_ITEMS.map((item) => ({
+    ...item,
+    name: translate(`particle.${item.id}.name` as TranslationKey, undefined, locale),
+  }));
+}
+
+export function getLevelInfo(xp: number, locale: Locale = 'fr'): LevelInfo {
   const xpPerLevel = 150;
   const level = Math.floor(xp / xpPerLevel) + 1;
   const currentLevelXp = xp % xpPerLevel;
-  const title = LEVEL_TITLES[Math.min(level - 1, LEVEL_TITLES.length - 1)];
+  const levelIdx = Math.min(level - 1, LEVEL_COUNT - 1);
+  const title = translate(`level.${levelIdx}` as TranslationKey, undefined, locale);
   return {
     level,
     title,

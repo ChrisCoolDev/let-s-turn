@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { AVATAR_LABELS, FigmaAvatar, FigmaFlameIcon } from './FigmaAssets';
-import { PLAYER_COLORS } from '../engine/gamification';
+import { LanguageToggle } from './LanguageToggle';
+import { getPlayerColors, PLAYER_COLORS } from '../engine/gamification';
+import { useI18n } from '../i18n';
 import type { AvatarId } from '../types/game';
 import { PwaInstallBanner } from './PwaInstallBanner';
 
@@ -16,6 +18,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   pendingJoinCode,
   onComplete,
 }) => {
+  const { locale, t } = useI18n();
+  const colorOptions = getPlayerColors(locale);
+
   const [name, setName] = useState('');
   const [avatarId, setAvatarId] = useState<AvatarId>(1);
   const [color, setColor] = useState<string>(PLAYER_COLORS[0].hex);
@@ -25,7 +30,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
-      setError('Entre ton prénom ou surnom pour commencer !');
+      setError(t('onboarding.nameError'));
       return;
     }
     onComplete(trimmed, avatarId, color);
@@ -35,7 +40,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-between px-4 py-6">
       <div>
         {/* En-tête de marque */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div
             className="inline-flex items-center gap-2 rounded-full border-2 px-3 py-1.5"
             style={{
@@ -51,17 +56,20 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               Let&apos;s Turn
             </span>
           </div>
-          {pendingJoinCode && (
-            <span
-              className="rounded-full px-3 py-1 text-xs font-extrabold"
-              style={{
-                backgroundColor: 'color-mix(in srgb, var(--duo-green) 15%, transparent)',
-                color: 'var(--duo-green-shadow)',
-              }}
-            >
-              Salon {pendingJoinCode}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {pendingJoinCode && (
+              <span
+                className="rounded-full px-3 py-1 text-xs font-extrabold"
+                style={{
+                  backgroundColor: 'color-mix(in srgb, var(--duo-green) 15%, transparent)',
+                  color: 'var(--duo-green-shadow)',
+                }}
+              >
+                {t('onboarding.roomBadge', { code: pendingJoinCode })}
+              </span>
+            )}
+            <LanguageToggle variant="compact" />
+          </div>
         </div>
 
         {/* Aperçu en direct du profil */}
@@ -77,11 +85,11 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
             style={{ color: 'var(--text-primary)' }}
           >
             {pendingJoinCode
-              ? `Rejoins le salon ${pendingJoinCode}`
-              : name.trim() || 'Crée ton profil'}
+              ? t('onboarding.joinTitle', { code: pendingJoinCode })
+              : name.trim() || t('onboarding.createTitle')}
           </h1>
           <p className="mt-1 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
-            {AVATAR_LABELS[avatarId]} 
+            {AVATAR_LABELS[avatarId]}
           </p>
         </div>
 
@@ -93,7 +101,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               className="mb-1.5 block text-xs font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
-              Prénom ou surnom
+              {t('onboarding.nameLabel')}
             </label>
             <input
               id="player-name"
@@ -104,7 +112,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
                 setName(e.target.value);
                 if (error) setError('');
               }}
-              placeholder="Ex : Alex, Chris..."
+              placeholder={t('onboarding.namePlaceholder')}
               className="w-full rounded-2xl border-2 px-4 py-3 text-base font-extrabold outline-none transition"
               style={{
                 backgroundColor: 'var(--bg-muted)',
@@ -126,7 +134,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               className="mb-2 block text-xs font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
-              Avatar
+              {t('onboarding.avatarLabel')}
             </span>
             <div className="grid grid-cols-3 gap-2.5">
               {AVATAR_IDS.map((id) => {
@@ -182,10 +190,10 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               className="mb-2.5 block text-xs font-black uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}
             >
-              Couleur
+              {t('onboarding.colorLabel')}
             </span>
             <div className="flex items-center justify-between gap-2 px-0.5">
-              {PLAYER_COLORS.map((c) => {
+              {colorOptions.map((c) => {
                 const active = color === c.hex;
                 return (
                   <button
@@ -220,7 +228,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
             type="submit"
             className="duo-btn duo-btn-green flex w-full items-center justify-center py-4 text-base"
           >
-            {pendingJoinCode ? `Rejoindre ${pendingJoinCode}` : "C'est parti !"}
+            {pendingJoinCode
+              ? t('onboarding.submitJoin', { code: pendingJoinCode })
+              : t('onboarding.submitStart')}
           </button>
         </form>
       </div>

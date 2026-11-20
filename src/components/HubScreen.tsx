@@ -10,6 +10,7 @@ import {
 import { FigmaAvatar, FigmaFlameIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
 import { getLevelInfo } from '../engine/gamification';
+import { useI18n } from '../i18n';
 import {
   isBotPartner,
   isWaitingPartner,
@@ -48,6 +49,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
   todayLabel,
   onPress,
 }) => {
+  const { t, formatMoves } = useI18n();
   const isCompleted = dailyRoom?.status === 'completed';
   const isActive = dailyRoom?.status === 'active';
   const moves = dailyRoom ? dailyRoom.moves.length + dailyRoom.undoPenaltyCount : 0;
@@ -80,7 +82,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
                 className="truncate text-[17px] font-black"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Défi du jour
+                {t('hub.dailyTitle')}
               </span>
               <span
                 className="shrink-0 rounded-md px-2 py-0.5 text-xs font-black uppercase"
@@ -97,12 +99,15 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
               style={{ color: 'var(--text-muted)' }}
             >
               {isCompleted && dailyRoom
-                ? `Réussi en ${moves} coup${moves > 1 ? 's' : ''} · par ${dailyRoom.optimalPar}`
+                ? t('hub.dailyCompleted', {
+                    moves: formatMoves(moves),
+                    par: dailyRoom.optimalPar,
+                  })
                 : isActive && dailyRoom
-                ? `${dailyRoom.language === 'FR' ? 'Français' : 'Anglais'} · ${
-                    dailyRoom.wordLength
-                  } lettres`
-                : 'Un mot commun chaque jour'}
+                ? `${
+                    dailyRoom.language === 'FR' ? t('common.french') : t('common.english')
+                  } · ${t('common.letters', { count: dailyRoom.wordLength })}`
+                : t('hub.dailySubtitleEmpty')}
             </p>
           </div>
         </div>
@@ -116,7 +121,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
             }}
           >
             <Check className="h-4 w-4 stroke-[3]" />
-            Fini
+            {t('common.done')}
           </span>
         ) : (
           <span
@@ -126,7 +131,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
               boxShadow: '0 3px 0 var(--duo-orange-shadow)',
             }}
           >
-            {isActive ? 'Reprendre' : 'Jouer'}
+            {isActive ? t('common.resume') : t('common.play')}
           </span>
         )}
       </div>
@@ -164,12 +169,13 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   onJoinByCode,
   onOpenCollection,
 }) => {
+  const { locale, t, intlLocale, formatMoves } = useI18n();
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState('');
   const [now, setNow] = useState<number>(() => Date.now());
 
-  const levelInfo = getLevelInfo(profile.xp);
+  const levelInfo = getLevelInfo(profile.xp, locale);
 
   const activeRooms = rooms
     .filter((r) => r.status === 'active')
@@ -202,7 +208,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       return b.startedAt - a.startedAt;
     })[0];
 
-  const todayLabel = new Intl.DateTimeFormat('fr-FR', {
+  const todayLabel = new Intl.DateTimeFormat(intlLocale, {
     day: 'numeric',
     month: 'short',
   }).format(new Date());
@@ -211,7 +217,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
     e.preventDefault();
     const cleaned = joinCode.trim().toUpperCase();
     if (cleaned.length < 4) {
-      setJoinError('Entre un code valide (ex : WINE-42 ou 4 lettres)');
+      setJoinError(t('hub.joinError'));
       return;
     }
     setShowJoinModal(false);
@@ -235,7 +241,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                 {profile.name}
               </span>
               <span className="rounded-full bg-[var(--duo-blue-bg)] px-2 py-0.5 text-xs font-black text-[var(--duo-blue-text)]">
-                Niv. {levelInfo.level}
+                {t('common.levelShort', { level: levelInfo.level })}
               </span>
             </div>
             <p className="truncate text-sm font-extrabold text-[var(--text-muted)]">
@@ -248,7 +254,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
         <div className="flex shrink-0 items-center gap-2">
           <div
             className="flex items-center gap-1 rounded-xl border-2 border-[var(--border-tile)] px-2.5 py-1.5"
-            title="Jours consécutifs joués en duo"
+            title={t('hub.streakTooltip')}
           >
             <FigmaFlameIcon size={18} />
             <span className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
@@ -259,7 +265,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             type="button"
             onClick={onOpenCollection}
             className="flex items-center gap-1 rounded-xl border-2 border-[var(--duo-gold)] bg-[var(--duo-gold-bg)] px-2.5 py-1.5 transition active:scale-95"
-            title="Étoiles & Boutique"
+            title={t('hub.starsTooltip')}
           >
             <Star className="h-4 w-4 fill-[#ffc800] text-[#e5a400]" />
             <span className="text-base font-black text-[var(--duo-gold-text)]">{profile.stars}</span>
@@ -268,8 +274,8 @@ export const HubScreen: React.FC<HubScreenProps> = ({
             type="button"
             onClick={onOpenCollection}
             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-[var(--border-tile)] text-[var(--text-muted)] hover:text-[var(--duo-blue)]"
-            aria-label="Collection & Profil"
-            title="Badges, Stats & Thèmes"
+            aria-label={t('hub.collectionAria')}
+            title={t('hub.collectionTooltip')}
           >
             <svg
               viewBox="0 0 24 24"
@@ -293,7 +299,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       {/* Mini barre XP du niveau */}
       <div className="mt-3.5 px-1">
         <div className="mb-1 flex items-center justify-between text-sm font-extrabold text-[var(--text-muted)]">
-          <span>Progression XP</span>
+          <span>{t('hub.xpProgress')}</span>
           <span>
             {levelInfo.currentLevelXp} / {levelInfo.nextLevelXp} XP
           </span>
@@ -312,7 +318,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-[15px] font-black uppercase tracking-wider text-[var(--text-muted)]">
-            Parties en cours ({activeRooms.length})
+            {t('hub.activeGames', { count: activeRooms.length })}
           </h2>
           {/*{completedCount > 0 && (
             <button
@@ -329,10 +335,10 @@ export const HubScreen: React.FC<HubScreenProps> = ({
         {activeRooms.length === 0 ? (
           <div className="duo-card p-5 text-center">
             <p className="text-base font-extrabold" style={{ color: 'var(--text-primary)' }}>
-              Aucune partie active pour le moment
+              {t('hub.emptyTitle')}
             </p>
             <p className="mt-1 text-sm font-bold text-[var(--text-muted)]">
-              Lance un nouveau défi pour transformer un mot avec ton partenaire !
+              {t('hub.emptySubtitle')}
             </p>
           </div>
         ) : (
@@ -380,11 +386,11 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                           className="truncate text-[17px] font-black"
                           style={{ color: waiting ? 'var(--text-muted)' : 'var(--text-primary)' }}
                         >
-                          {waiting ? 'En attente...' : partner.name}
+                          {waiting ? t('common.waiting') : partner.name}
                         </p>
                         <p className="truncate text-sm font-bold text-[var(--text-muted)]">
-                          {room.language === 'FR' ? 'Français' : 'Anglais'} · {room.wordLength}{' '}
-                          lettres
+                          {room.language === 'FR' ? t('common.french') : t('common.english')} ·{' '}
+                          {t('common.letters', { count: room.wordLength })}
                         </p>
                       </div>
                     </div>
@@ -397,7 +403,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                           boxShadow: '0 3px 0 var(--duo-green-shadow)',
                         }}
                       >
-                        Jouer
+                        {t('common.play')}
                       </span>
                     ) : (
                       <span className="flex shrink-0 items-center gap-1.5 text-sm font-extrabold tabular-nums text-[var(--text-muted)]">
@@ -409,7 +415,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                                   className="h-1.5 w-1.5 rounded-full"
                                   style={{ backgroundColor: 'var(--text-muted)' }}
                                 />
-                                En attente
+                                {t('common.waitingShort')}
                               </>
                             );
                           }
@@ -417,7 +423,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                             return (
                               <>
                                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--duo-gold)]" />
-                                Son tour
+                                {t('hub.theirTurn')}
                               </>
                             );
                           }
@@ -436,7 +442,9 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                                     remainingSec <= 10 ? 'var(--duo-red)' : 'var(--duo-gold)',
                                 }}
                               />
-                              {remainingSec <= 20 ? `Son tour · ${remainingSec}s` : 'Son tour'}
+                              {remainingSec <= 20
+                                ? t('hub.theirTurnCountdown', { seconds: remainingSec })
+                                : t('hub.theirTurn')}
                             </>
                           );
                         })()}
@@ -468,7 +476,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                         overPar ? 'text-[var(--duo-orange)]' : 'text-[var(--text-muted)]'
                       }`}
                     >
-                      {moves} coup{moves > 1 ? 's' : ''} · par {room.optimalPar}
+                      {formatMoves(moves)} · {t('common.parShort', { par: room.optimalPar })}
                     </span>
                   </div>
                 </button>
@@ -486,7 +494,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           className="duo-btn duo-btn-green flex w-full items-center justify-center gap-2.5 py-4 text-[17px]"
         >
           <Plus className="h-5 w-5 stroke-[3]" />
-          Lancer un défi
+          {t('hub.startDuel')}
         </button>
 
         <button
@@ -498,7 +506,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           className="duo-btn duo-btn-white flex w-full items-center justify-center gap-2.5 py-4 text-base"
         >
           <Hash className="h-5 w-5 text-[var(--duo-blue)]" />
-          Rejoindre avec un code
+          {t('hub.joinWithCode')}
         </button>
       </section>
 
@@ -526,18 +534,19 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           >
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>
-                Rejoindre un duel
+                {t('hub.joinModalTitle')}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowJoinModal(false)}
                 className="rounded-full p-1 text-[var(--text-muted)] hover:bg-black/5"
+                aria-label={t('common.close')}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <p className="mt-1 text-sm font-bold text-[var(--text-muted)]">
-              Entre le code envoyé par ton partenaire (ex : WINE-42 ou 4 caractères).
+              {t('hub.joinModalHint')}
             </p>
 
             <form onSubmit={handleJoinSubmit} className="mt-4 space-y-4">
@@ -564,10 +573,10 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                   onClick={() => setJoinCode('WINE-42')}
                   className="duo-btn duo-btn-white flex-1 py-3 text-[13px]"
                 >
-                  Tester WINE-42
+                  {t('hub.tryDemo')}
                 </button>
                 <button type="submit" className="duo-btn duo-btn-blue flex-1 py-3 text-[13px]">
-                  Rejoindre
+                  {t('hub.joinSubmit')}
                 </button>
               </div>
             </form>

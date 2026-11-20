@@ -1,4 +1,5 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
+import { translate } from '../i18n';
 import { getSupabaseConfig } from './supabaseConfig';
 import type {
   AvatarId,
@@ -144,7 +145,7 @@ function clampAvatarId(value: number | null | undefined): AvatarId {
 export function createWaitingPartnerPresence(): PlayerPresence {
   return {
     playerId: WAITING_PARTNER_ID,
-    name: 'En attente...',
+    name: translate('common.waiting'),
     avatarId: 5,
     color: '#cbd5e1',
     online: false,
@@ -172,7 +173,7 @@ export function createCarolePresence(): PlayerPresence {
 function toPresence(
   row: DbProfileRow | null,
   fallbackId: string,
-  fallbackName = 'Partenaire'
+  fallbackName = translate('common.partner')
 ): PlayerPresence {
   if (!row) {
     return {
@@ -352,16 +353,20 @@ async function assembleGameRoom(
       : Promise.resolve([] as DbMoveRow[]),
   ]);
 
-  const hostPresence = toPresence(hostProf, dbRoom.host_player_id, existingLocal?.hostPlayer.name ?? 'Hôte');
+  const hostPresence = toPresence(
+    hostProf,
+    dbRoom.host_player_id,
+    existingLocal?.hostPlayer.name ?? translate('common.host')
+  );
   const keepMiyuBot =
     !dbRoom.partner_player_id &&
     Boolean(existingLocal && isBotPartner(existingLocal.partnerPlayer.playerId));
+  const partnerFallbackName =
+    existingLocal && !isWaitingPartner(existingLocal.partnerPlayer.playerId)
+      ? existingLocal.partnerPlayer.name
+      : translate('common.partner');
   const partnerPresence = dbRoom.partner_player_id
-    ? toPresence(
-        partnerProf,
-        dbRoom.partner_player_id,
-        existingLocal?.partnerPlayer.name ?? 'Partenaire'
-      )
+    ? toPresence(partnerProf, dbRoom.partner_player_id, partnerFallbackName)
     : keepMiyuBot
     ? createMiyuPresence()
     : createWaitingPartnerPresence();

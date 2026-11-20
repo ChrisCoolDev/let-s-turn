@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { FigmaAvatar, FigmaFlameIcon, ShareIcon } from './FigmaAssets';
 import { getHintForWord, isOneLetterDiff, isValidWord } from '../engine/wordLadder';
+import { isPlural, useI18n } from '../i18n';
 import {
   BOT_PROPOSAL_DELAY_MS,
   broadcastTypingState,
@@ -67,6 +68,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   onEndGame,
   onOpenVictory,
 }) => {
+  const { locale, t } = useI18n();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [draftLetter, setDraftLetter] = useState<string | null>(null);
   const [shakeBoard, setShakeBoard] = useState(false);
@@ -118,8 +120,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     }
     const elapsed = Math.max(0, Date.now() - room.startedAt);
     const delay = Math.max(0, BOT_PROPOSAL_DELAY_MS - elapsed);
-    const t = window.setTimeout(() => setShowBotProposal(true), delay);
-    return () => window.clearTimeout(t);
+    const timer = window.setTimeout(() => setShowBotProposal(true), delay);
+    return () => window.clearTimeout(timer);
   }, [waitingForPartner, room.status, room.startedAt, botProposalDismissed]);
 
   const showToast = useCallback(
@@ -151,15 +153,15 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         pass.fromPlayerId !== profile.playerId && pass.fromPlayerName !== profile.name
           ? pass.fromPlayerName
           : partner.name;
-      showToast(`${otherName} a trop tardé — à ton tour !`, 'hint', 3400);
+      showToast(t('board.toastTurnTimeoutYou', { name: otherName }), 'hint', 3400);
     } else {
       const nextName =
         pass.toPlayerId !== profile.playerId && pass.toPlayerName !== profile.name
           ? pass.toPlayerName
           : partner.name;
-      showToast(`Temps écoulé — le tour passe à ${nextName}`, 'info', 3400);
+      showToast(t('board.toastTurnTimeoutOther', { name: nextName }), 'info', 3400);
     }
-  }, [room.lastTurnPass, profile.playerId, profile.name, partner.name, showToast]);
+  }, [room.lastTurnPass, profile.playerId, profile.name, partner.name, showToast, t]);
 
   // Reset local draft whenever the currentWord changes
   useEffect(() => {
@@ -171,8 +173,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     if (room.moves.length > 0) {
       const lastMove = room.moves[room.moves.length - 1];
       setFlippedIndex(lastMove.changedIndex);
-      const t = window.setTimeout(() => setFlippedIndex(null), 420);
-      return () => window.clearTimeout(t);
+      const timer = window.setTimeout(() => setFlippedIndex(null), 420);
+      return () => window.clearTimeout(timer);
     }
   }, [room.currentWord, room.moves]);
 
@@ -208,28 +210,28 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       setDraftMeaning(null);
       return;
     }
-    const immediate = getImmediateWordMeaning(draftWord, room.language);
+    const immediate = getImmediateWordMeaning(draftWord, room.language, locale);
     setDraftMeaning(immediate);
 
     if (!immediate.valid || immediate.definition) return;
     const ctrl = new AbortController();
-    fetchWordMeaning(draftWord, room.language, ctrl.signal).then((res) => {
+    fetchWordMeaning(draftWord, room.language, ctrl.signal, locale).then((res) => {
       if (!ctrl.signal.aborted) setDraftMeaning(res);
     });
     return () => ctrl.abort();
-  }, [hasDraftChange, draftWord, room.language]);
+  }, [hasDraftChange, draftWord, room.language, locale]);
 
   // Définition du mot actuel sur le plateau
   useEffect(() => {
-    const immediate = getImmediateWordMeaning(room.currentWord, room.language);
+    const immediate = getImmediateWordMeaning(room.currentWord, room.language, locale);
     setCurrentWordMeaning(immediate);
     if (!immediate.valid || immediate.definition) return;
     const ctrl = new AbortController();
-    fetchWordMeaning(room.currentWord, room.language, ctrl.signal).then((res) => {
+    fetchWordMeaning(room.currentWord, room.language, ctrl.signal, locale).then((res) => {
       if (!ctrl.signal.aborted) setCurrentWordMeaning(res);
     });
     return () => ctrl.abort();
-  }, [room.currentWord, room.language]);
+  }, [room.currentWord, room.language, locale]);
 
   const lastChangedIndex = useMemo(() => {
     if (room.moves.length === 0) return -1;
@@ -271,8 +273,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     if (!canPlayManually) {
       showToast(
         waitingForPartner
-          ? 'Partage le lien ou attends qu’un partenaire rejoigne !'
-          : `Patiente un instant, ${partner.name} joue son coup...`,
+          ? t('board.toastWaitingPartner')
+          : t('board.toastPartnerPlaying', { name: partner.name }),
         'info'
       );
       return;
@@ -293,8 +295,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       if (!canPlayManually) {
         showToast(
           waitingForPartner
-            ? 'En attente d’un partenaire pour ce coup !'
-            : `C'est au tour de ${partner.name} !`,
+            ? t('board.toastWaitingPartnerMove')
+            : t('board.toastPartnerTurn', { name: partner.name }),
           'info'
         );
         return;
@@ -307,7 +309,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       setFlippedIndex(targetIdx);
       window.setTimeout(() => setFlippedIndex(null), 260);
     },
-    [room.status, canPlayManually, partner.name, selectedIndex, showToast]
+    [room.status, canPlayManually, waitingForPartner, partner.name, selectedIndex, showToast, t]
   );
 
   const handleBackspace = useCallback(() => {
@@ -326,7 +328,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     }
     if (!canPlayManually) return;
     if (!hasDraftChange) {
-      showToast('Touche une tuile puis tape une nouvelle lettre !', 'info');
+      showToast(t('board.toastSelectTile'), 'info');
       return;
     }
 
@@ -335,24 +337,24 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     // Verify exact 1-letter difference
     const diff = isOneLetterDiff(room.currentWord, candidate);
     if (!diff.valid) {
-      triggerErrorFeedback('Tu ne peux changer qu’une seule lettre à la fois !');
+      triggerErrorFeedback(t('board.toastOneLetterOnly'));
       return;
     }
 
     // Check if word was already played in the chain (startWord or any previous move)
     if (candidate === room.startWord) {
-      triggerErrorFeedback('Déjà joué au départ (étape 0) !');
+      triggerErrorFeedback(t('board.toastAlreadyPlayedStart'));
       return;
     }
     const existingStepIdx = room.moves.findIndex((m) => m.word === candidate);
     if (existingStepIdx !== -1) {
-      triggerErrorFeedback(`Déjà joué à l'étape ${existingStepIdx + 1} !`);
+      triggerErrorFeedback(t('board.toastAlreadyPlayedStep', { step: existingStepIdx + 1 }));
       return;
     }
 
     // Dictionary validation
     if (!isValidWord(candidate, room.language, room.wordLength)) {
-      triggerErrorFeedback('Mot inconnu dans le dictionnaire');
+      triggerErrorFeedback(t('board.toastUnknownWord'));
       return;
     }
 
@@ -376,6 +378,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     onSubmitMove,
     showToast,
     triggerErrorFeedback,
+    t,
   ]);
 
   // Physical keyboard support for fast testing & desktop play
@@ -408,12 +411,12 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   const handleHintClick = () => {
     if (room.status === 'completed') return;
     if (!canPlayManually) {
-      showToast(`Attends ton tour pour utiliser un indice !`, 'info');
+      showToast(t('board.toastWaitForHint'), 'info');
       return;
     }
     const hint = getHintForWord(room.currentWord, room.targetWord, room.language);
     if (!hint) {
-      showToast('Impasse détectée ! Utilise Reculer (Undo) pour revenir en arrière.', 'error');
+      showToast(t('board.toastDeadEnd'), 'error');
       return;
     }
 
@@ -422,7 +425,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       setHintChar(hint.targetChar);
       setSelectedIndex(hint.changedIndex);
       showToast(
-        `Indice révélé : change la tuile #${hint.changedIndex + 1} en "${hint.targetChar}"`,
+        t('board.toastHintRevealed', {
+          index: hint.changedIndex + 1,
+          char: hint.targetChar,
+        }),
         'hint',
         3200
       );
@@ -431,20 +437,20 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
     const paid = onUseHint(room.code);
     if (!paid) {
-      showToast('Plus d’étoiles (0 ⭐) ! Utilise Reculer ou termine des défis.', 'error');
+      showToast(t('board.toastNoStars'), 'error');
       return;
     }
 
     setHintIndex(hint.changedIndex);
     setSelectedIndex(hint.changedIndex);
     setDraftLetter(null);
-    showToast(
-      `Indice BFS (-1 ⭐) : modifie la tuile dorée ! (${hint.remainingSteps} coup${
-        hint.remainingSteps > 1 ? 's' : ''
-      } min. restant${hint.remainingSteps > 1 ? 's' : ''})`,
-      'hint',
-      3500
+    const remainingLabel = t(
+      isPlural(hint.remainingSteps, locale)
+        ? 'board.remainingMovesMany'
+        : 'board.remainingMovesOne',
+      { count: hint.remainingSteps }
     );
+    showToast(t('board.toastHintBfs', { remaining: remainingLabel }), 'hint', 3500);
   };
 
   const handleInviteCopy = async () => {
@@ -452,8 +458,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share({
-          title: `Let's Turn : ${room.startWord} → ${room.targetWord}`,
-          text: `Rejoins mon duel Let's Turn (${room.code}) !`,
+          title: t('board.shareTitle', { start: room.startWord, target: room.targetWord }),
+          text: t('board.shareText', { code: room.code }),
           url,
         });
         return;
@@ -465,20 +471,30 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     }
     try {
       await navigator.clipboard.writeText(url);
-      showToast(`Lien du salon ${room.code} copié !`, 'info');
+      showToast(t('board.toastLinkCopied', { code: room.code }), 'info');
     } catch {
-      showToast(`Code salon : ${room.code}`, 'info');
+      showToast(t('board.toastRoomCode', { code: room.code }), 'info');
     }
   };
 
   // Conversational history text matching Figma Frame 2 (node 2:16)
   const formatMoveSentence = (move: WordMove) => {
     const isMe = move.playerId === profile.playerId;
-    const actor = isMe ? 'Vous avez' : `${move.playerName} a`;
     if (move.isUndoPenalty) {
-      return `${actor} reculé d'un coup (+1 pénalité)`;
+      return isMe ? t('board.moveMeUndo') : t('board.moveOtherUndo', { name: move.playerName });
     }
-    return `${actor} changé ${move.fromChar} en ${move.toChar} pour ${move.word}`;
+    return isMe
+      ? t('board.moveMeChanged', {
+          from: move.fromChar,
+          to: move.toChar,
+          word: move.word,
+        })
+      : t('board.moveOtherChanged', {
+          name: move.playerName,
+          from: move.fromChar,
+          to: move.toChar,
+          word: move.word,
+        });
   };
 
   const recentMoves = useMemo(() => {
@@ -497,7 +513,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             type="button"
             onClick={onBackToHub}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-black/5"
-            aria-label="Retour à l'accueil"
+            aria-label={t('board.backAria')}
           >
             <ArrowLeft className="h-5 w-5 stroke-[2.75]" />
           </button>
@@ -516,8 +532,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               type="button"
               onClick={() => setShowEndConfirm(true)}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:bg-black/5 hover:text-[var(--duo-red)]"
-              aria-label="Terminer la partie"
-              title="Terminer la partie"
+              aria-label={t('board.endGameAria')}
+              title={t('board.endGameAria')}
             >
               <Flag className="h-[18px] w-[18px] stroke-[2.5]" />
             </button>
@@ -541,7 +557,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                 className="truncate text-[17px] font-black"
                 style={{ color: waitingForPartner ? 'var(--text-muted)' : 'var(--text-primary)' }}
               >
-                {waitingForPartner ? 'En attente...' : partner.name}
+                {waitingForPartner ? t('common.waiting') : partner.name}
               </p>
               {room.status === 'completed' ? (
                 <button
@@ -549,12 +565,12 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   onClick={() => onOpenVictory(room.code)}
                   className="text-sm font-black text-[var(--duo-green-text)] hover:underline"
                 >
-                  🎉 Terminé ! Voir le résumé
+                  {t('board.completedCta')}
                 </button>
               ) : isMyTurn ? (
                 <div className="mt-0.5 flex items-center gap-1.5">
                   <p className="truncate text-sm font-extrabold text-[var(--duo-green-text)]">
-                    C&apos;est ton tour ! · Coup {totalMovesUsed}/{room.optimalPar}
+                    {t('board.yourTurn', { moves: totalMovesUsed, par: room.optimalPar })}
                   </p>
                   {hasTurnCountdown && (
                     <span
@@ -567,7 +583,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                           ? 'var(--duo-red-text)'
                           : 'var(--duo-green-text)',
                       }}
-                      title="Temps restant pour ton tour"
+                      title={t('board.yourTurnTimeTooltip')}
                     >
                       <Clock className="h-3 w-3 stroke-[2.75]" />
                       {remainingSeconds}s
@@ -576,13 +592,15 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                 </div>
               ) : waitingForPartner ? (
                 <p className="mt-0.5 truncate text-sm font-extrabold text-[var(--text-muted)]">
-                  En attente d&apos;un partenaire... · Coup {totalMovesUsed}/{room.optimalPar}
+                  {t('board.waitingStatus', { moves: totalMovesUsed, par: room.optimalPar })}
                 </p>
               ) : (
                 <div className="mt-0.5 flex items-center gap-1.5">
                   <p className="truncate text-sm font-extrabold text-[var(--duo-gold-text)]">
-                    {partner.isTyping ? `${partner.name} tape...` : `Tour de ${partner.name}...`} ·
-                    Coup {totalMovesUsed}/{room.optimalPar}
+                    {partner.isTyping
+                      ? t('board.partnerTyping', { name: partner.name })
+                      : t('board.partnerTurn', { name: partner.name })}{' '}
+                    · {t('board.moveRatio', { moves: totalMovesUsed, par: room.optimalPar })}
                   </p>
                   {showPartnerCountdown && (
                     <span
@@ -595,7 +613,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                           ? 'var(--duo-red-text)'
                           : 'var(--duo-gold-text)',
                       }}
-                      title="Passage auto du tour si inactif"
+                      title={t('board.partnerTimeTooltip')}
                     >
                       <Clock className="h-3 w-3 stroke-[2.75]" />
                       {remainingSeconds}s
@@ -609,7 +627,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           <div className="flex shrink-0 items-center gap-2">
             <div
               className="flex h-10 items-center gap-1.5 rounded-xl border-2 border-[var(--border-tile)] px-3"
-              title="Jours consécutifs joués en duo"
+              title={t('hub.streakTooltip')}
             >
               <FigmaFlameIcon size={18} />
               <span className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
@@ -621,8 +639,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               type="button"
               onClick={handleInviteCopy}
               className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-[var(--border-tile)] text-[var(--text-muted)] transition hover:text-[var(--duo-blue)] active:scale-95"
-              aria-label="Partager la partie"
-              title="Partager la partie"
+              aria-label={t('board.shareAria')}
+              title={t('board.shareAria')}
             >
               <ShareIcon />
             </button>
@@ -639,10 +657,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   className="truncate text-sm font-black"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  Personne n&apos;a rejoint ?
+                  {t('board.miyuTitle')}
                 </p>
                 <p className="truncate text-xs font-bold text-[var(--text-muted)]">
-                  Jouer avec Miyu (bot)
+                  {t('board.miyuSubtitle')}
                 </p>
               </div>
             </div>
@@ -652,13 +670,13 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                 onClick={() => onEnableBot(room.code)}
                 className="duo-btn duo-btn-green px-3.5 py-1.5 text-xs"
               >
-                Jouer
+                {t('common.play')}
               </button>
               <button
                 type="button"
                 onClick={() => setBotProposalDismissed(true)}
                 className="flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-black/5"
-                aria-label="Ignorer la proposition"
+                aria-label={t('board.miyuDismissAria')}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -696,13 +714,16 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             <p className="text-center text-sm font-bold text-[var(--text-muted)]">
               {!isMyTurn && room.status === 'active'
                 ? waitingForPartner
-                  ? 'Partage le lien ou attends qu’un partenaire rejoigne'
+                  ? t('board.promptWaitingPartner')
                   : showPartnerCountdown
-                  ? `En attente de ${partner.name} — tour auto dans ${remainingSeconds}s`
-                  : `En attente du coup de ${partner.name} — clavier verrouillé`
+                  ? t('board.promptPartnerCountdown', {
+                      name: partner.name,
+                      seconds: remainingSeconds,
+                    })
+                  : t('board.promptPartnerLocked', { name: partner.name })
                 : selectedIndex === null
-                ? 'Touche une tuile pour changer une lettre'
-                : `Tuile #${selectedIndex + 1} sélectionnée — tape une lettre`}
+                ? t('board.promptTapTile')
+                : t('board.promptTileSelected', { index: selectedIndex + 1 })}
             </p>
           )}
         </div>
@@ -713,7 +734,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             room.wordLength === 5 ? 'gap-2' : 'gap-2.5'
           } ${shakeBoard ? 'animate-shake' : ''}`}
           role="group"
-          aria-label="Tuiles du mot actuel"
+          aria-label={t('board.tilesGroupAria')}
         >
           {displayLetters.map((letter, idx) => {
             const isSelected = selectedIndex === idx;
@@ -752,7 +773,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                     : ''
                 } ${isFlipped ? 'animate-flip-tile' : ''}`}
                 style={{ color: letterColor }}
-                aria-label={`Tuile ${idx + 1} lettre ${letter}`}
+                aria-label={t('board.tileAria', { index: idx + 1, letter })}
               >
                 {letter}
               </button>
@@ -763,7 +784,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         {/* Rappel de l'indice lettre cible si révélé */}
         {hintChar && hintIndex !== null && (
           <p className="mt-2.5 text-sm font-black text-[var(--duo-gold-text)]">
-            💡 Lettre suggérée pour la tuile {hintIndex + 1} :{' '}
+            {t('board.hintSuggested', { index: hintIndex + 1 })}{' '}
             <span className="rounded bg-[var(--duo-gold-bg)] px-2 py-0.5 text-[var(--duo-gold-text)]">
               {hintChar}
             </span>
@@ -793,19 +814,19 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             <div className="min-w-0 flex-1 leading-snug">
               <p className="text-[15px] font-black">
                 {alreadyPlayedStep !== null
-                  ? `${draftWord} déjà joué (${
-                      alreadyPlayedStep === 0 ? 'mot de départ' : `étape ${alreadyPlayedStep}`
-                    })`
+                  ? alreadyPlayedStep === 0
+                    ? t('board.draftAlreadyStart', { word: draftWord })
+                    : t('board.draftAlreadyStep', { word: draftWord, step: alreadyPlayedStep })
                   : draftMeaning.valid
-                  ? `✓ ${draftWord} a du sens !`
-                  : `✗ "${draftWord}" n'a pas de sens`}
+                  ? t('board.draftValid', { word: draftWord })
+                  : t('board.draftInvalid', { word: draftWord })}
               </p>
               <p className="mt-0.5 truncate text-sm font-bold opacity-90">
                 {alreadyPlayedStep !== null
-                  ? 'Choisis une autre lettre pour avancer sans tourner en rond.'
+                  ? t('board.draftAlreadyDesc')
                   : draftMeaning.valid
-                  ? draftMeaning.definition ?? 'Vérification du sens en cours...'
-                  : 'Ce mot n’existe pas dans le dictionnaire courant.'}
+                  ? draftMeaning.definition ?? t('board.draftChecking')
+                  : t('board.draftInvalidDesc')}
               </p>
             </div>
           </div>
@@ -815,8 +836,9 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         <div className="mt-5 w-full space-y-2 text-center">
           {recentMoves.length === 0 ? (
             <p className="text-base font-bold text-[var(--text-muted)]">
-              Mot de départ : <span className="text-[var(--text-primary)]">{room.startWord}</span> — À vous de
-              jouer le premier coup !
+              {t('board.startWordPromptPrefix')}{' '}
+              <span className="text-[var(--text-primary)]">{room.startWord}</span>{' '}
+              {t('board.startWordPromptSuffix')}
             </p>
           ) : (
             recentMoves.map((move, i) => (
@@ -853,7 +875,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               className="mx-auto flex items-center gap-1.5 rounded-full border border-[var(--border-tile)] px-4 py-1.5 text-sm font-extrabold text-[var(--text-muted)] hover:bg-black/5"
             >
               <History className="h-4 w-4 text-[var(--duo-blue)]" />
-              Chaîne complète ({room.moves.length + 1} mots)
+              {t('board.fullChain', { count: room.moves.length + 1 })}
               {showFullChain ? (
                 <ChevronUp className="h-4 w-4" />
               ) : (
@@ -865,7 +887,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               <div className="duo-card mt-2 max-h-40 space-y-2 overflow-y-auto p-3.5">
                 <div className="flex items-center justify-between text-sm font-extrabold">
                   <span className="rounded-lg bg-[var(--bg-muted)] px-2 py-0.5 text-[var(--text-muted)]">
-                    Départ
+                    {t('common.start')}
                   </span>
                   <span className="tracking-widest text-[var(--text-primary)]">
                     {room.startWord}
@@ -882,7 +904,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                         style={{ backgroundColor: move.playerColor }}
                       />
                       <span className="text-[var(--text-muted)]">
-                        #{stepIdx + 1} {move.playerId === profile.playerId ? 'Toi' : move.playerName}
+                        #{stepIdx + 1}{' '}
+                        {move.playerId === profile.playerId ? t('common.you') : move.playerName}
                       </span>
                     </span>
                     <span className="font-black tracking-widest">
@@ -923,7 +946,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               }`}
             >
               <Lightbulb className="h-4 w-4 text-[#ffc800]" />
-              Indice
+              {t('board.hintButton')}
               <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-xs font-black text-[var(--duo-gold-text)]">
                 1 <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
               </span>
@@ -938,10 +961,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   ? 'duo-btn-disabled'
                   : 'duo-btn-white'
               }`}
-              title="Reculer d'un coup (+1 pénalité)"
+              title={t('board.undoTooltip')}
             >
               <RotateCcw className="h-4 w-4 text-[var(--duo-orange)]" />
-              Undo
+              {t('board.undoButton')}
             </button>
           </div>
 
@@ -994,7 +1017,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   disabled={!canPlayManually || room.status === 'completed'}
                   onClick={handleBackspace}
                   className="duo-key flex h-12 w-12 items-center justify-center bg-[var(--bg-muted)] text-[var(--text-primary)]"
-                  aria-label="Effacer"
+                  aria-label={t('board.backspaceAria')}
                 >
                   <Delete className="h-5 w-5" />
                 </button>
@@ -1017,14 +1040,14 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           }`}
         >
           {room.status === 'completed'
-            ? 'Voir la victoire 🎉'
+            ? t('board.ctaVictory')
             : hasDraftChange
-            ? `Valider ${draftWord}`
+            ? t('board.ctaSubmitWord', { word: draftWord })
             : canPlayManually
-            ? 'Valider'
+            ? t('board.ctaSubmit')
             : waitingForPartner
-            ? 'En attente d’un partenaire...'
-            : `Tour de ${partner.name}...`}
+            ? t('board.ctaWaitingPartner')
+            : t('board.ctaPartnerTurn', { name: partner.name })}
         </button>
       </footer>
 
@@ -1041,21 +1064,21 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           >
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>
-                Terminer la partie ?
+                {t('board.endModalTitle')}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowEndConfirm(false)}
                 className="rounded-full p-1 text-[var(--text-muted)] hover:bg-black/5"
-                aria-label="Fermer"
+                aria-label={t('common.close')}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <p className="mt-1.5 text-sm font-bold text-[var(--text-muted)]">
-              La partie sera clôturée sans trouver{' '}
-              <span className="font-black text-[var(--text-primary)]">{room.targetWord}</span> et la
-              solution optimale sera affichée.
+              {t('board.endModalDescPrefix')}{' '}
+              <span className="font-black text-[var(--text-primary)]">{room.targetWord}</span>{' '}
+              {t('board.endModalDescSuffix')}
             </p>
             <div className="mt-5 flex gap-2.5">
               <button
@@ -1063,7 +1086,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                 onClick={() => setShowEndConfirm(false)}
                 className="duo-btn duo-btn-white flex-1 py-3.5 text-sm"
               >
-                Continuer
+                {t('board.endModalContinue')}
               </button>
               <button
                 type="button"
@@ -1078,7 +1101,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   borderBottomWidth: 6,
                 }}
               >
-                Terminer
+                {t('board.endModalConfirm')}
               </button>
             </div>
           </div>

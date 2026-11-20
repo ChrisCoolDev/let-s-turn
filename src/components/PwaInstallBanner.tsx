@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Download, Share, PlusSquare, X, Smartphone } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -9,6 +10,7 @@ interface BeforeInstallPromptEvent extends Event {
 const DISMISS_KEY = 'lets_turn_pwa_banner_dismissed';
 
 export const PwaInstallBanner: React.FC = () => {
+  const { t } = useI18n();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIos, setIsIos] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -65,10 +67,10 @@ export const PwaInstallBanner: React.FC = () => {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-extrabold leading-tight" style={{ color: 'var(--text-primary)' }}>
-            Installe l&apos;app sur ton écran d&apos;accueil
+            {t('pwa.bannerTitle')}
           </p>
           <p className="mt-0.5 text-[13px] font-bold leading-snug" style={{ color: 'var(--text-muted)' }}>
-            Pour recevoir les tours de ton partenaire en direct !
+            {t('pwa.bannerSubtitle')}
           </p>
         </div>
         <button
@@ -76,13 +78,13 @@ export const PwaInstallBanner: React.FC = () => {
           onClick={handleInstallClick}
           className="duo-btn duo-btn-blue shrink-0 px-3.5 py-2 text-[13px]"
         >
-          {isIos ? 'Voir' : 'Installer'}
+          {isIos ? t('pwa.btnView') : t('pwa.btnInstall')}
         </button>
         <button
           type="button"
           onClick={handleDismiss}
           className="rounded-lg p-1 text-[var(--text-muted)] hover:bg-black/5"
-          aria-label="Fermer la bannière d'installation"
+          aria-label={t('pwa.dismissAria')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -100,20 +102,19 @@ export const PwaInstallBanner: React.FC = () => {
           >
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black" style={{ color: 'var(--text-primary)' }}>
-                Installer Let&apos;s Turn
+                {t('pwa.modalTitle')}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowIosGuide(false)}
                 className="rounded-full p-1 text-[var(--text-muted)] hover:bg-black/5"
+                aria-label={t('common.close')}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <p className="mt-2 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
-              {isIos
-                ? 'Sur iPhone / Safari, ajoute l’app en 2 secondes :'
-                : 'Ajoute l’app comme une vraie application mobile :'}
+              {isIos ? t('pwa.modalSubIos') : t('pwa.modalSubOther')}
             </p>
             <div className="mt-4 space-y-3">
               <div className="flex items-center gap-3 rounded-xl border-2 border-[var(--border-tile)] p-3">
@@ -121,7 +122,9 @@ export const PwaInstallBanner: React.FC = () => {
                   <Share className="h-5 w-5" />
                 </div>
                 <p className="text-xs font-extrabold">
-                  1. Touche l&apos;icône <span className="text-[var(--duo-blue-text)]">Partager</span> dans la barre du navigateur
+                  {t('pwa.step1Prefix')}{' '}
+                  <span className="text-[var(--duo-blue-text)]">{t('pwa.step1Highlight')}</span>{' '}
+                  {t('pwa.step1Suffix')}
                 </p>
               </div>
               <div className="flex items-center gap-3 rounded-xl border-2 border-[var(--border-tile)] p-3">
@@ -129,7 +132,9 @@ export const PwaInstallBanner: React.FC = () => {
                   <PlusSquare className="h-5 w-5" />
                 </div>
                 <p className="text-xs font-extrabold">
-                  2. Choisis <span className="text-[var(--duo-green-text)]">Sur l&apos;écran d&apos;accueil</span> puis Valider
+                  {t('pwa.step2Prefix')}{' '}
+                  <span className="text-[var(--duo-green-text)]">{t('pwa.step2Highlight')}</span>{' '}
+                  {t('pwa.step2Suffix')}
                 </p>
               </div>
               {!isIos && (
@@ -137,9 +142,7 @@ export const PwaInstallBanner: React.FC = () => {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--duo-orange-bg)] text-[var(--duo-orange)]">
                     <Download className="h-5 w-5" />
                   </div>
-                  <p className="text-xs font-extrabold">
-                    Ou clique sur l&apos;icône d&apos;installation dans la barre d&apos;adresse Chrome/Edge.
-                  </p>
+                  <p className="text-xs font-extrabold">{t('pwa.step3Other')}</p>
                 </div>
               )}
             </div>
@@ -148,7 +151,7 @@ export const PwaInstallBanner: React.FC = () => {
               onClick={() => setShowIosGuide(false)}
               className="duo-btn duo-btn-green mt-5 w-full py-3 text-sm"
             >
-              Compris !
+              {t('pwa.gotIt')}
             </button>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { isValidWord } from '../engine/wordLadder';
+import type { Locale } from '../i18n';
 import type { Language, WordLength } from '../types/game';
 
 export interface WordMeaningResult {
@@ -8,7 +9,7 @@ export interface WordMeaningResult {
   source: 'local' | 'api' | 'dictionary' | 'invalid';
 }
 
-const CACHE_KEY = 'lets_turn_meaning_cache_v1';
+const CACHE_KEY = 'lets_turn_meaning_cache_v2';
 
 // Définitions instantanées pour les chaînes phares et mots très fréquents
 const LOCAL_MEANINGS: Record<string, string> = {
@@ -184,6 +185,179 @@ const LOCAL_MEANINGS: Record<string, string> = {
   'FR:CRANE': 'Boîte osseuse de la tête',
 };
 
+const LOCAL_MEANINGS_EN: Record<string, string> = {
+  // EN 4
+  'EN:WINE': 'Alcoholic drink made from fermented grapes',
+  'EN:WING': 'Limb or airfoil used for flying',
+  'EN:SING': 'Make musical sounds with the voice',
+  'EN:SANG': 'Past tense of sing',
+  'EN:SAND': 'Loose granular grains on beaches or deserts',
+  'EN:SAID': 'Past tense of say',
+  'EN:SLID': 'Past tense of slide',
+  'EN:SLIM': 'Slender, thin, gracefully narrow',
+  'EN:SINE': 'Trigonometric ratio function',
+  'EN:SANE': 'Of sound mind, rational, reasonable',
+  'EN:SINK': 'Washbasin / go down below a surface',
+  'EN:SILK': 'Fine, soft natural fiber from silkworms',
+  'EN:COLD': 'Of a low temperature, chilly',
+  'EN:CORD': 'Thin flexible string, rope, or cable',
+  'EN:WORD': 'Single distinct unit of language',
+  'EN:WARD': 'Hospital room / city district / guard',
+  'EN:WARM': 'Moderately hot, cozy, friendly',
+  'EN:FIRE': 'Combustion / flames / dismiss from a job',
+  'EN:FORE': 'Front part / warning shout in golf',
+  'EN:FORD': 'Shallow place to cross a river',
+  'EN:FOLD': 'Bend something over onto itself',
+  'EN:GOLD': 'Precious yellow metal',
+  'EN:LOVE': 'Deep affection / care deeply for',
+  'EN:HOVE': 'Past tense of heave / came into view',
+  'EN:HAVE': 'Possess, own, or hold',
+  'EN:HATE': 'Intense dislike or hostility',
+  'EN:STAR': 'Luminous celestial body / celebrity',
+  'EN:SOAR': 'Fly or rise high in the air',
+  'EN:BOAR': 'Wild pig',
+  'EN:BOOR': 'Rough, ill-mannered person',
+  'EN:MOOR': 'Open uncultivated upland / secure a boat',
+  'EN:MOON': "Earth's natural satellite",
+  'EN:MILK': 'White nutrient-rich liquid',
+  'EN:MILE': 'Unit of linear distance (1,609 m)',
+  'EN:MALE': 'Of the sex that produces sperm / masculine',
+  'EN:MAKE': 'Form, produce, or create',
+  'EN:CAKE': 'Sweet baked dessert',
+  'EN:WORK': 'Mental or physical effort / job',
+  'EN:CORK': 'Buoyant bark material / bottle stopper',
+  'EN:CORE': 'Central or most important part',
+  'EN:COME': 'Move toward the speaker / arrive',
+  'EN:HOME': 'Place where one lives',
+  'EN:BOOK': 'Bound written work / reserve in advance',
+  'EN:ROOK': 'Chess castle piece / crow-like bird',
+  'EN:ROOD': 'Cross or crucifix / old land measure',
+  'EN:ROAD': 'Wide way leading from one place to another',
+  'EN:READ': 'Look at and understand written words',
+  'EN:HEAD': 'Upper part of the body / leader',
+  'EN:BEAD': 'Small pierced piece for threading / drop',
+  'EN:BEAT': 'Strike repeatedly / musical pulse',
+  'EN:BOAT': 'Small vessel for travelling on water',
+  'EN:BOOT': 'Sturdy footwear / car trunk / start up',
+  'EN:FOOT': 'Lower extremity of the leg / 12 inches',
+  'EN:DARK': 'With little or no light',
+  'EN:DARE': 'Have the courage to do something',
+  'EN:DAME': 'Titled woman / lady',
+  'EN:LAME': 'Unable to walk properly / unconvincing',
+  'EN:LAMP': 'Device for giving light',
+  'EN:WOLF': 'Wild carnivorous pack canine',
+  'EN:GOLF': 'Club-and-ball sport played on a course',
+  'EN:GOOF': 'Foolish mistake / blunder',
+  'EN:GOON': 'Thug / silly person',
+  'EN:LOON': 'Diving waterbird / eccentric person',
+  'EN:LION': 'Large tawny wild cat',
+  'EN:TREE': 'Woody perennial plant with a trunk',
+  'EN:FREE': 'Not confined / costing nothing',
+  'EN:FEET': 'Plural of foot',
+  'EN:FEAT': 'Achievement requiring great courage or skill',
+  'EN:FEAR': 'Unpleasant emotion caused by danger',
+  'EN:LEAF': 'Flattened green organ of a plant',
+  'EN:GAME': 'Activity played for fun or competition',
+  'EN:PLAY': 'Engage in activity for enjoyment / drama',
+  'EN:LINE': 'Long narrow mark / row of people',
+  'EN:LIME': 'Small green citrus fruit / calcium oxide',
+  'EN:PINE': 'Evergreen conifer tree / yearn deeply',
+  'EN:MINE': 'Excavation for minerals / belonging to me',
+  'EN:NINE': 'The number 9',
+  'EN:FINE': 'Of high quality / monetary penalty',
+  'EN:RING': 'Circular band / chime sound',
+  'EN:KING': 'Male sovereign ruler',
+  'EN:PING': 'Short high-pitched ringing sound / network check',
+  'EN:SONG': 'Short poem or set of words set to music',
+  'EN:LONG': 'Measuring a great distance or time',
+  'EN:WINS': 'Achieves victory in a contest',
+  'EN:SINS': 'Offenses or misdeeds',
+  'EN:PINK': 'Pale red color',
+  'EN:BLUE': 'Color of a clear sky',
+  'EN:RAIN': 'Condensed moisture falling as drops',
+  'EN:SNOW': 'Frozen water crystals falling from clouds',
+
+  // EN 5
+  'EN:HEART': 'Muscular organ that pumps blood / core',
+  'EN:HEARS': 'Perceives sound (present tense of hear)',
+  'EN:SEARS': 'Scorches or burns the surface',
+  'EN:SCARS': 'Marks left after a wound heals',
+  'EN:SCARE': 'Cause sudden fear or alarm',
+  'EN:SHARE': 'Have or give a portion with others',
+  'EN:STARS': 'Luminous celestial bodies / celebrities',
+  'EN:STARE': 'Look fixedly with eyes wide open',
+  'EN:START': 'Begin or set in motion',
+  'EN:SMART': 'Intelligent, quick-witted, neat',
+  'EN:STONE': 'Hard solid mineral matter / rock',
+  'EN:STOLE': 'Past tense of steal / long scarf',
+  'EN:STILE': 'Steps allowing people over a fence',
+  'EN:SMILE': 'Pleased or amused facial expression',
+  'EN:TRAIN': 'Linked railway carriages / teach a skill',
+  'EN:BRAIN': 'Organ of thought inside the skull',
+  'EN:BRAID': 'Interwoven strands of hair or cord',
+  'EN:BRAND': 'Trademark name / burning piece of wood',
+  'EN:BLAND': 'Lacking strong flavor or character',
+  'EN:BLANK': 'Empty, unmarked, expressionless',
+  'EN:PLANK': 'Long flat piece of sawn timber',
+  'EN:PLANE': 'Aircraft / flat surface / woodworking tool',
+
+  // FR 4
+  'FR:VENT': 'French word: wind, moving air',
+  'FR:SENT': 'French word: feels / smells (verb sentir)',
+  'FR:SONT': 'French word: are (3rd pers. plural of être)',
+  'FR:SONG': 'French word: song (common loanword)',
+  'FR:SANG': 'French word: blood',
+  'FR:LOUP': 'French word: wolf',
+  'FR:COUP': 'French word: blow, move, turn, attempt',
+  'FR:COUR': 'French word: courtyard / royal court',
+  'FR:JOUR': 'French word: day, daylight',
+  'FR:ROSE': 'French word: rose flower / pink color',
+  'FR:LOSE': 'French word: bad luck / defeat (slang)',
+  'FR:LISE': 'French word: subjunctive of lire (to read)',
+  'FR:LIME': 'French word: nail or metal file / lime fruit',
+  'FR:PAIN': 'French word: bread',
+  'FR:BAIN': 'French word: bath',
+  'FR:MAIN': 'French word: hand',
+  'FR:FOUR': 'French word: oven',
+  'FR:BOIS': 'French word: wood / small forest',
+  'FR:FOIS': 'French word: time, occasion',
+  'FR:FOUS': 'French word: plural of fou (crazy)',
+  'FR:FEUS': 'French word: deceased (literary plural)',
+  'FR:FEUX': 'French word: fires, lights (plural of feu)',
+  'FR:DAME': 'French word: lady / queen in chess',
+  'FR:RAME': 'French word: oar / ream of paper',
+  'FR:ROME': 'French word: Rome (capital of Italy)',
+  'FR:ROIS': 'French word: kings (plural of roi)',
+  'FR:MARE': 'French word: pond, pool',
+  'FR:MURE': 'French word: blackberry / ripe (fem.)',
+  'FR:LURE': 'French word: town of Lure / old form of lure',
+  'FR:LUNE': 'French word: moon',
+  'FR:TOUR': 'French word: tower / turn / tour',
+  'FR:TOUT': 'French word: everything, all',
+  'FR:PONT': 'French word: bridge / ship deck',
+  'FR:GARE': 'French word: train station',
+  'FR:CAFE': 'French word: coffee / café',
+  'FR:CHAT': 'French word: cat',
+  'FR:SOIR': 'French word: evening',
+
+  // FR 5
+  'FR:TERRE': 'French word: earth, ground, planet',
+  'FR:PERCE': 'French word: pierces (verb percer)',
+  'FR:PERLE': 'French word: pearl, bead',
+  'FR:MERLE': 'French word: blackbird',
+  'FR:PLAGE': 'French word: beach',
+  'FR:PLACE': 'French word: square / spot / seat',
+  'FR:GLACE': 'French word: ice / ice cream / mirror',
+  'FR:CARTE': 'French word: card / map / menu',
+  'FR:PORTE': 'French word: door / carries (verb porter)',
+  'FR:TABLE': 'French word: table',
+  'FR:SABLE': 'French word: sand',
+  'FR:LIVRE': 'French word: book / pound',
+  'FR:FRIME': 'French word: showing off, pretense',
+  'FR:CRIME': 'French word: crime, felony',
+  'FR:CRANE': 'French word: skull / brag (slang)',
+};
+
 const memoryCache = new Map<string, string>();
 
 function loadPersistentCache(): Record<string, string> {
@@ -212,7 +386,8 @@ function savePersistentCache(key: string, value: string): void {
 
 export function getImmediateWordMeaning(
   word: string,
-  lang: Language
+  lang: Language,
+  uiLocale: Locale = 'fr'
 ): WordMeaningResult {
   const clean = word.trim().toUpperCase();
   const length = clean.length;
@@ -225,16 +400,18 @@ export function getImmediateWordMeaning(
     return { word: clean, valid: false, definition: null, source: 'invalid' };
   }
 
-  const cacheKey = `${lang}:${clean}`;
-  if (LOCAL_MEANINGS[cacheKey]) {
+  const lookupKey = `${lang}:${clean}`;
+  const localMap = uiLocale === 'en' ? LOCAL_MEANINGS_EN : LOCAL_MEANINGS;
+  if (localMap[lookupKey]) {
     return {
       word: clean,
       valid: true,
-      definition: LOCAL_MEANINGS[cacheKey],
+      definition: localMap[lookupKey],
       source: 'local',
     };
   }
 
+  const cacheKey = `${uiLocale}:${lookupKey}`;
   if (memoryCache.has(cacheKey)) {
     return {
       word: clean,
@@ -266,15 +443,16 @@ export function getImmediateWordMeaning(
 export async function fetchWordMeaning(
   word: string,
   lang: Language,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  uiLocale: Locale = 'fr'
 ): Promise<WordMeaningResult> {
-  const immediate = getImmediateWordMeaning(word, lang);
+  const immediate = getImmediateWordMeaning(word, lang, uiLocale);
   if (!immediate.valid || immediate.definition) {
     return immediate;
   }
 
   const clean = immediate.word;
-  const cacheKey = `${lang}:${clean}`;
+  const cacheKey = `${uiLocale}:${lang}:${clean}`;
 
   try {
     if (lang === 'EN') {
@@ -299,7 +477,7 @@ export async function fetchWordMeaning(
           return { word: clean, valid: true, definition: formatted, source: 'api' };
         }
       }
-    } else {
+    } else if (uiLocale === 'fr') {
       const res = await fetch(
         `https://fr.wiktionary.org/api/rest_v1/page/summary/${encodeURIComponent(
           clean.toLowerCase()
@@ -322,13 +500,19 @@ export async function fetchWordMeaning(
     // Offline or network blocked: fallback gracefully to dictionary validation
   }
 
+  const fallbackDefinition =
+    uiLocale === 'en'
+      ? lang === 'EN'
+        ? 'Valid English dictionary word'
+        : 'Valid French dictionary word'
+      : lang === 'EN'
+      ? 'Mot anglais courant valide du dictionnaire'
+      : 'Mot français courant valide du dictionnaire';
+
   return {
     word: clean,
     valid: true,
-    definition:
-      lang === 'EN'
-        ? 'Mot anglais courant valide du dictionnaire'
-        : 'Mot français courant valide du dictionnaire',
+    definition: fallbackDefinition,
     source: 'dictionary',
   };
 }
