@@ -324,7 +324,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-sheet-up,
   .animate-fade-in,
-  .animate-pop-in {
+  .animate-pop-in,
+  .animate-tour-pop,
+  .animate-tour-ring {
     animation: none;
   }
 }
@@ -341,4 +343,23 @@ body {
 
 .animate-pulse-green {
   animation: pulseGreenDot 1.6s infinite ease-in-out;
+}
+
+@keyframes tourPop {
+  0% { transform: scale(0.92) translateY(6px); opacity: 0; }
+  70% { transform: scale(1.02) translateY(-1px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.animate-tour-pop {
+  animation: tourPop 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes tourRingPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--duo-blue) 45%, transparent); }
+  50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--duo-blue) 0%, transparent); }
+}
+
+.animate-tour-ring {
+  animation: tourRingPulse 1.8s infinite ease-in-out;
 }

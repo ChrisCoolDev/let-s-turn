@@ -9,6 +9,7 @@ import {
   Clock,
   Delete,
   Flag,
+  HelpCircle,
   History,
   Lightbulb,
   RotateCcw,
@@ -42,6 +43,8 @@ interface GameBoardScreenProps {
   onEnableBot: (roomCode: string) => void;
   onEndGame: (roomCode: string) => void;
   onOpenVictory: (roomCode: string) => void;
+  onStartTour?: () => void;
+  tourPaused?: boolean;
 }
 
 const QWERTY_ROWS = [
@@ -66,6 +69,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   onEnableBot,
   onEndGame,
   onOpenVictory,
+  onStartTour,
+  tourPaused = false,
 }) => {
   const { locale, t } = useI18n();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -110,15 +115,17 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   const isLowTime = hasTurnCountdown && remainingSeconds <= 10;
 
   useEffect(() => {
-    if (!waitingForPartner || room.status !== 'active' || botProposalDismissed) {
-      setShowBotProposal(false);
+    if (!waitingForPartner || room.status !== 'active' || botProposalDismissed || tourPaused) {
+      if (botProposalDismissed || !waitingForPartner || room.status !== 'active') {
+        setShowBotProposal(false);
+      }
       return;
     }
     const elapsed = Math.max(0, Date.now() - room.startedAt);
     const delay = Math.max(0, BOT_PROPOSAL_DELAY_MS - elapsed);
     const timer = window.setTimeout(() => setShowBotProposal(true), delay);
     return () => window.clearTimeout(timer);
-  }, [waitingForPartner, room.status, room.startedAt, botProposalDismissed]);
+  }, [waitingForPartner, room.status, room.startedAt, botProposalDismissed, tourPaused]);
 
   const showToast = useCallback(
     (text: string, tone: 'error' | 'info' | 'hint' = 'info', duration = 2600) => {
@@ -131,11 +138,11 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
   // Live countdown ticker for 2-player turn timeout
   useEffect(() => {
-    if (!hasTurnCountdown) return;
+    if (!hasTurnCountdown || tourPaused) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
-  }, [hasTurnCountdown, room.turnStartedAt, room.currentTurnPlayerId]);
+  }, [hasTurnCountdown, tourPaused, room.turnStartedAt, room.currentTurnPlayerId]);
 
   // Show a clear toast when a turn passes automatically after timing out
   useEffect(() => {
@@ -532,6 +539,18 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
             </div>
           </div>
 
+          {onStartTour && (
+            <button
+              type="button"
+              onClick={onStartTour}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:bg-black/5 hover:text-[var(--duo-blue)]"
+              aria-label={t('tour.replayAria')}
+              title={t('tour.replayAria')}
+            >
+              <HelpCircle className="h-[19px] w-[19px] stroke-[2.5]" />
+            </button>
+          )}
+
           {room.status === 'active' && (
             <button
               type="button"
@@ -546,7 +565,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         </div>
 
         {/* Ligne 2 : Avatar & statut du tour à gauche / Flamme + Share à droite */}
-        <div className="flex items-center justify-between gap-2">
+        <div data-tour="board-turn-status" className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
             <FigmaAvatar
               avatarId={partner.avatarId}
@@ -694,6 +713,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       <main className="my-2 flex flex-1 flex-col items-center justify-start pt-4">
         {/* Titre Figma node 1:34 : "Let’s turn WINE to SLIM" */}
         <h1
+          data-tour="board-goal"
           className="text-center text-[22px] font-extrabold tracking-tight"
           style={{ color: 'var(--text-primary)' }}
         >
@@ -735,6 +755,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
 
         {/* Rangée de Tuiles 3D Tactiles */}
         <div
+          data-tour="board-tiles"
           className={`mt-4 flex w-full items-center justify-center ${
             room.wordLength === 5 ? 'gap-2' : 'gap-2.5'
           } ${shakeBoard ? 'animate-shake' : ''}`}
@@ -940,7 +961,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       {/* BAS DU PLATEAU : Actions Aide (Indice + Undo) + Clavier AZERTY/QWERTY + Valider */}
       <footer className="space-y-2.5">
         {/* Barre d'aide & switch clavier */}
-        <div className="flex items-center justify-between gap-2">
+        <div data-tour="board-tools" className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1036,6 +1057,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         {/* Gros bouton Valider 3D style Duolingo CHECK / Figma node 2:1040 */}
         <button
           type="button"
+          data-tour="board-submit"
           onClick={handleValidate}
           disabled={room.status === 'active' && (!hasDraftChange || !canPlayManually)}
           className={`duo-btn flex w-full items-center justify-center gap-2 py-4 text-[17px] ${

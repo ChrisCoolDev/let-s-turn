@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppTour, type TourStep } from './components/AppTour';
 import { CollectionProfileScreen } from './components/CollectionProfileScreen';
 import { CreateDuelSheet } from './components/CreateDuelSheet';
 import { GameBoardScreen } from './components/GameBoardScreen';
@@ -7,7 +8,8 @@ import { OnboardingScreen } from './components/OnboardingScreen';
 import { VictoryScreen } from './components/VictoryScreen';
 import { evaluateNewBadges } from './engine/gamification';
 import { generateWordPair, isOneLetterDiff } from './engine/wordLadder';
-import { translate } from './i18n';
+import { translate, useI18n } from './i18n';
+import { loadTourState, markTourDone, type TourState } from './services/tour';
 import {
   bootstrapSupabaseState,
   broadcastRoomUpdate,
@@ -89,6 +91,7 @@ function isGenericFallbackName(name: string | null | undefined): boolean {
 }
 
 export function App() {
+  const { t } = useI18n();
   const [profile, setProfile] = useState<PlayerProfile | null>(() => loadProfile());
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() =>
     parsePendingJoinCode()
@@ -114,6 +117,8 @@ export function App() {
   const lastLocalMutationRef = useRef<Record<string, number>>({});
   const hubNoticeTimerRef = useRef<number | null>(null);
   const [authBootstrapped, setAuthBootstrapped] = useState(false);
+  const [tourState, setTourState] = useState<TourState>(() => loadTourState());
+  const [activeTour, setActiveTour] = useState<'hub' | 'board' | null>(null);
 
   const showHubNotice = useCallback((message: string) => {
     if (hubNoticeTimerRef.current) window.clearTimeout(hubNoticeTimerRef.current);
@@ -556,11 +561,15 @@ export function App() {
   const activeBotRoomWord = activeBotRoom?.currentWord;
   const activeBotRoomMovesLen = activeBotRoom?.moves.length ?? 0;
 
+  const isBoardTourOpen = activeTour === 'board';
+  const isBoardTourOpenRef = useRef(isBoardTourOpen);
+  isBoardTourOpenRef.current = isBoardTourOpen;
+
   // Automatic smart partner response (Miyu) when it's her turn & partner is Miyu
   useEffect(() => {
     const activeProfile = profileRef.current;
     const room = activeRoomCode ? roomsRef.current[activeRoomCode] : null;
-    if (!activeProfile || !activeRoomCode || screen !== 'board') return;
+    if (!activeProfile || !activeRoomCode || screen !== 'board' || isBoardTourOpen) return;
     if (!room || room.status !== 'active') return;
 
     const { isBot, isMyTurn } = resolveRoomParticipants(room, activeProfile);
@@ -690,6 +699,7 @@ export function App() {
     activeBotRoomTurnId,
     activeBotRoomWord,
     activeBotRoomMovesLen,
+    isBoardTourOpen,
   ]);
 
   const hasTimeoutCandidate = Boolean(
@@ -723,6 +733,7 @@ export function App() {
 
       for (const room of Object.values(prev)) {
         if (room.status !== 'active') continue;
+        if (isBoardTourOpenRef.current && room.code === activeRoomCodeRef.current) continue;
         const { me, partner, waitingForPartner, isBot, isMyTurn } = resolveRoomParticipants(
           room,
           activeProfile
@@ -1110,10 +1121,167 @@ export function App() {
   useEffect(() => {
     if (screen === 'board' && activeRoom && activeRoom.status === 'completed') {
       const delay = activeRoom.abandoned ? 0 : 380;
-      const t = window.setTimeout(() => completeRoomVictoryRef.current(activeRoom), delay);
-      return () => window.clearTimeout(t);
+      const timer = window.setTimeout(() => completeRoomVictoryRef.current(activeRoom), delay);
+      return () => window.clearTimeout(timer);
     }
   }, [screen, activeRoom?.code, activeRoom?.status, activeRoom?.abandoned]);
+
+  // Auto-launch Hub & Board Duolingo App Tour once on first visit
+  useEffect(() => {
+    if (!profile || showCreateSheet) {
+      if (activeTour) setActiveTour(null);
+      return;
+    }
+
+    if (screen !== 'hub' && activeTour === 'hub') {
+      setActiveTour(null);
+      return;
+    }
+    if (screen !== 'board' && activeTour === 'board') {
+      setActiveTour(null);
+      return;
+    }
+
+    if (screen === 'hub' && !tourState.hubDone && activeTour === null) {
+      const timer = window.setTimeout(() => setActiveTour('hub'), 380);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (
+      screen === 'board' &&
+      activeRoom &&
+      activeRoom.status === 'active' &&
+      !tourState.boardDone &&
+      activeTour === null
+    ) {
+      const timer = window.setTimeout(() => setActiveTour('board'), 380);
+      return () => window.clearTimeout(timer);
+    }
+  }, [
+    profile?.playerId,
+    showCreateSheet,
+    screen,
+    activeRoom?.code,
+    activeRoom?.status,
+    tourState.hubDone,
+    tourState.boardDone,
+    activeTour,
+  ]);
+
+  const handleFinishTour = useCallback(() => {
+    const closing = activeTour;
+    if (!closing) return;
+    setTourState(markTourDone(closing));
+    setActiveTour(null);
+
+    if (closing === 'board' && activeRoomCode) {
+      const prevRooms = roomsRef.current;
+      const room = prevRooms[activeRoomCode];
+      if (room && room.status === 'active' && isBotPartner(room.partnerPlayer.playerId)) {
+        const refreshed: GameRoom = {
+          ...room,
+          turnStartedAt: Date.now(),
+        };
+        const nextRooms = { ...prevRooms, [activeRoomCode]: refreshed };
+        roomsRef.current = nextRooms;
+        saveRooms(nextRooms);
+        setRooms(nextRooms);
+      }
+    }
+  }, [activeTour, activeRoomCode]);
+
+  const tourSteps = useMemo<TourStep[]>(() => {
+    if (activeTour === 'hub') {
+      return [
+        {
+          id: 'hub-profile',
+          targetSelector: '[data-tour="hub-profile"]',
+          title: t('tour.hub.profile.title'),
+          description: t('tour.hub.profile.desc'),
+          preferredPlacement: 'bottom',
+          highlightRadius: 18,
+          padding: 6,
+        },
+        {
+          id: 'hub-active-games',
+          targetSelector: '[data-tour="hub-active-games"]',
+          title: t('tour.hub.activeGames.title'),
+          description: t('tour.hub.activeGames.desc'),
+          preferredPlacement: 'bottom',
+          highlightRadius: 18,
+          padding: 6,
+        },
+        {
+          id: 'hub-start-duel',
+          targetSelector: '[data-tour="hub-start-duel"]',
+          title: t('tour.hub.startDuel.title'),
+          description: t('tour.hub.startDuel.desc'),
+          preferredPlacement: 'top',
+          highlightRadius: 16,
+          padding: 6,
+        },
+        {
+          id: 'hub-daily',
+          targetSelector: '[data-tour="hub-daily"]',
+          title: t('tour.hub.daily.title'),
+          description: t('tour.hub.daily.desc'),
+          preferredPlacement: 'top',
+          highlightRadius: 18,
+          padding: 6,
+        },
+      ];
+    }
+    if (activeTour === 'board') {
+      return [
+        {
+          id: 'board-goal',
+          targetSelector: '[data-tour="board-goal"]',
+          title: t('tour.board.goal.title'),
+          description: t('tour.board.goal.desc'),
+          preferredPlacement: 'bottom',
+          highlightRadius: 14,
+          padding: 8,
+        },
+        {
+          id: 'board-tiles',
+          targetSelector: '[data-tour="board-tiles"]',
+          title: t('tour.board.tiles.title'),
+          description: t('tour.board.tiles.desc'),
+          preferredPlacement: 'bottom',
+          highlightRadius: 16,
+          padding: 8,
+        },
+        {
+          id: 'board-turn-status',
+          targetSelector: '[data-tour="board-turn-status"]',
+          title: t('tour.board.turnStatus.title'),
+          description: t('tour.board.turnStatus.desc'),
+          preferredPlacement: 'bottom',
+          highlightRadius: 16,
+          padding: 6,
+        },
+        {
+          id: 'board-tools',
+          targetSelector: '[data-tour="board-tools"]',
+          title: t('tour.board.tools.title'),
+          description: t('tour.board.tools.desc'),
+          preferredPlacement: 'top',
+          highlightRadius: 14,
+          padding: 6,
+        },
+        {
+          id: 'board-submit',
+          targetSelector: '[data-tour="board-submit"]',
+          title: t('tour.board.submit.title'),
+          description: t('tour.board.submit.desc'),
+          preferredPlacement: 'top',
+          highlightRadius: 16,
+          padding: 6,
+        },
+      ];
+    }
+    return [];
+  }, [activeTour, t]);
 
   const handleOpenRoom = useCallback((code: string) => {
     const prevRooms = roomsRef.current;
@@ -1159,6 +1327,7 @@ export function App() {
           }}
           onJoinByCode={handleJoinByCode}
           onOpenCollection={() => setScreen('collection')}
+          onStartTour={() => setActiveTour('hub')}
         />
       )}
 
@@ -1177,6 +1346,8 @@ export function App() {
             setActiveRoomCode(code);
             setScreen('victory');
           }}
+          onStartTour={() => setActiveTour('board')}
+          tourPaused={isBoardTourOpen}
         />
       )}
 
@@ -1220,6 +1391,13 @@ export function App() {
           }}
         />
       )}
+
+      <AppTour
+        open={activeTour !== null}
+        steps={tourSteps}
+        onComplete={handleFinishTour}
+        onSkip={handleFinishTour}
+      />
     </div>
   );
 }

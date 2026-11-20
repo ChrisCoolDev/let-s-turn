@@ -126,7 +126,7 @@ export function createInitialProfile(
     avatarId,
     color,
     xp: 420,
-    stars: 18,
+    stars: 5,
     streak: 0,
     lastPlayedDate: null,
     gamesPlayed: 12,

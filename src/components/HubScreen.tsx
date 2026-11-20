@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Check,
   Hash,
+  HelpCircle,
   Plus,
   Star,
   X,
@@ -28,6 +29,7 @@ interface HubScreenProps {
   onOpenCreateDuel: (daily?: boolean) => void;
   onJoinByCode: (code: string) => Promise<void> | void;
   onOpenCollection: () => void;
+  onStartTour?: () => void;
 }
 
 function isSameLocalDay(timestampMs: number): boolean {
@@ -62,6 +64,7 @@ const DailyChallengeCard: React.FC<DailyChallengeCardProps> = ({
     <button
       type="button"
       onClick={onPress}
+      data-tour="hub-daily"
       className="duo-card mt-5 w-full p-4 text-left transition active:translate-y-0.5"
       style={{
         borderColor: accentColor,
@@ -172,6 +175,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   onOpenCreateDuel,
   onJoinByCode,
   onOpenCollection,
+  onStartTour,
 }) => {
   const { locale, t, intlLocale, formatMoves } = useI18n();
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -232,7 +236,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-8 pt-5">
       {/* Zone 1 : En-tête (Profil & Progression) */}
-      <header className="duo-card flex items-center justify-between gap-3 p-3.5">
+      <header data-tour="hub-profile" className="duo-card flex items-center justify-between gap-3 p-3.5">
         <button
           type="button"
           onClick={onOpenCollection}
@@ -344,20 +348,22 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           <h2 className="flex items-center gap-2 text-[15px] font-black uppercase tracking-wider text-[var(--text-muted)]">
             {t('hub.activeGames', { count: activeRooms.length })}
           </h2>
-          {/*{completedCount > 0 && (
+          {onStartTour && (
             <button
               type="button"
-              onClick={onOpenCollection}
-              className="text-xs font-extrabold hover:underline"
-              style={{ color: 'var(--duo-blue-text)' }}
+              onClick={onStartTour}
+              className="inline-flex items-center gap-1.5 rounded-full border-2 border-[var(--border-tile)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-black text-[var(--duo-blue-text)] transition hover:border-[var(--duo-blue)] active:scale-95"
+              aria-label={t('tour.replayAria')}
+              title={t('tour.replayAria')}
             >
-              {completedCount} terminée{completedCount > 1 ? 's' : ''}
+              <HelpCircle className="h-3.5 w-3.5 stroke-[2.5]" />
+              {t('tour.replayButton')}
             </button>
-          )}*/}
+          )}
         </div>
 
         {activeRooms.length === 0 ? (
-          <div className="duo-card p-5 text-center">
+          <div data-tour="hub-active-games" className="duo-card p-5 text-center">
             <p className="text-base font-extrabold" style={{ color: 'var(--text-primary)' }}>
               {t('hub.emptyTitle')}
             </p>
@@ -367,7 +373,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           </div>
         ) : (
           <div className="space-y-3">
-            {activeRooms.map((room) => {
+            {activeRooms.map((room, index) => {
               const {
                 partner,
                 waitingForPartner: waiting,
@@ -385,6 +391,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                 <button
                   key={room.code}
                   type="button"
+                  data-tour={index === 0 ? 'hub-active-games' : undefined}
                   onClick={() => onOpenRoom(room.code)}
                   className="duo-card group w-full p-4 text-left transition active:translate-y-0.5"
                   style={{
@@ -511,6 +518,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       <section className="mt-6 space-y-3">
         <button
           type="button"
+          data-tour="hub-start-duel"
           onClick={() => onOpenCreateDuel(false)}
           className="duo-btn duo-btn-green flex w-full items-center justify-center gap-2.5 py-4 text-[17px]"
         >

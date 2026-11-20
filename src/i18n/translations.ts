@@ -288,6 +288,43 @@ export const fr = {
   'particle.hearts.short': 'Cœurs',
   'particle.lightning.name': 'Éclairs Turbo',
   'particle.lightning.short': 'Éclairs',
+
+  'tour.stepCounter': 'Étape {current} sur {total}',
+  'tour.next': 'Suivant',
+  'tour.finish': "C'est parti !",
+  'tour.skip': 'Passer',
+  'tour.backAria': 'Étape précédente',
+  'tour.replayButton': 'Guide',
+  'tour.replayAria': 'Ouvrir le guide interactif',
+
+  'tour.hub.profile.title': 'Ton profil & tes récompenses',
+  'tour.hub.profile.desc':
+    "Gagne de l'XP, fais grimper ta série et dépense tes étoiles pour débloquer thèmes et effets de victoire.",
+  'tour.hub.activeGames.title': 'Tes parties en cours',
+  'tour.hub.activeGames.desc':
+    "Retrouve tous tes duels ici. Une partie contre Miyu (bot) t'attend déjà pour t'entraîner !",
+  'tour.hub.startDuel.title': 'Défie un ami ou Miyu',
+  'tour.hub.startDuel.desc':
+    'Choisis FR/EN et 4 ou 5 lettres, puis partage le lien. Personne après 20s ? Miyu peut prendre le relais !',
+  'tour.hub.daily.title': 'Le défi du jour',
+  'tour.hub.daily.desc':
+    "Un nouveau puzzle chaque jour avec bonus d'XP et d'étoiles. Enchaîne les jours pour booster ta flamme !",
+
+  'tour.board.goal.title': "L'objectif du duel",
+  'tour.board.goal.desc':
+    'Transforme le mot de départ en mot cible en changeant une seule lettre par tour, en un minimum de coups.',
+  'tour.board.tiles.title': 'Touche une tuile',
+  'tour.board.tiles.desc':
+    'Sélectionne la lettre à remplacer puis tape une nouvelle lettre au clavier. Chaque mot doit exister !',
+  'tour.board.turnStatus.title': 'Tour par tour & chrono 30s',
+  'tour.board.turnStatus.desc':
+    'Vous jouez à tour de rôle avec 30 secondes par coup avant que la main ne passe automatiquement.',
+  'tour.board.tools.title': 'Indice, Annuler & Clavier',
+  'tour.board.tools.desc':
+    'Bloqué ? Prends un indice contre 1 étoile, annule le dernier coup ou bascule entre AZERTY et QWERTY.',
+  'tour.board.submit.title': 'Valide ton mot !',
+  'tour.board.submit.desc':
+    'Dès que ton nouveau mot est reconnu, appuie ici pour jouer ton tour et faire avancer la chaîne.',
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -580,4 +617,41 @@ export const en: Record<TranslationKey, string> = {
   'particle.hearts.short': 'Hearts',
   'particle.lightning.name': 'Turbo Lightning',
   'particle.lightning.short': 'Lightning',
+
+  'tour.stepCounter': 'Step {current} of {total}',
+  'tour.next': 'Next',
+  'tour.finish': "Let's go!",
+  'tour.skip': 'Skip',
+  'tour.backAria': 'Previous step',
+  'tour.replayButton': 'Guide',
+  'tour.replayAria': 'Open interactive guide',
+
+  'tour.hub.profile.title': 'Your profile & rewards',
+  'tour.hub.profile.desc':
+    'Earn XP, grow your streak, and spend stars to unlock themes and victory effects.',
+  'tour.hub.activeGames.title': 'Your active games',
+  'tour.hub.activeGames.desc':
+    'Find all your ongoing duels here. A starter match against Miyu (bot) is ready for practice!',
+  'tour.hub.startDuel.title': 'Challenge a friend or Miyu',
+  'tour.hub.startDuel.desc':
+    'Pick FR/EN and 4 or 5 letters, then share the link. Nobody after 20s? Miyu can jump in!',
+  'tour.hub.daily.title': 'Daily challenge',
+  'tour.hub.daily.desc':
+    'A fresh puzzle every day with bonus XP and stars. Keep playing daily to grow your streak!',
+
+  'tour.board.goal.title': 'The goal of the duel',
+  'tour.board.goal.desc':
+    'Turn the start word into the target word by changing one letter per turn, in as few moves as possible.',
+  'tour.board.tiles.title': 'Tap a letter tile',
+  'tour.board.tiles.desc':
+    'Select the letter you want to replace, then pick a new letter on the keyboard. Every word must be valid!',
+  'tour.board.turnStatus.title': 'Turn-based & 30s clock',
+  'tour.board.turnStatus.desc':
+    'Take turns with 30 seconds per move before the turn automatically passes over.',
+  'tour.board.tools.title': 'Hint, Undo & Keyboard',
+  'tour.board.tools.desc':
+    'Stuck? Spend 1 star for a hint, undo the last move, or switch between AZERTY and QWERTY.',
+  'tour.board.submit.title': 'Submit your word!',
+  'tour.board.submit.desc':
+    'Once your new word is recognized, press here to play your turn and advance the ladder.',
 };

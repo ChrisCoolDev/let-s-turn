@@ -275,6 +275,7 @@ async function ensureHostProfileRow(uid: string, host: PlayerPresence): Promise<
         name: host.name,
         avatar_id: host.avatarId,
         color: host.color,
+        stars: 5,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'id' }
@@ -298,7 +299,7 @@ export function hydrateLocalProfileFromRemote(
     avatarId: clampAvatarId(remote.avatar_id),
     color: remote.color || '#58cc02',
     xp: remote.xp ?? 0,
-    stars: remote.stars ?? 18,
+    stars: remote.stars ?? 5,
     streak: remote.streak ?? 0,
     lastPlayedDate: remote.last_played_date ?? null,
     gamesPlayed: 0,
