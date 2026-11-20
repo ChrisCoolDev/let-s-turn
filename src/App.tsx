@@ -887,6 +887,7 @@ export function App() {
         : [...profile.unlockedThemes, themeId],
       activeTheme: themeId,
     };
+    profileRef.current = updated;
     saveProfile(updated);
     setProfile(updated);
     return true;
@@ -908,6 +909,7 @@ export function App() {
         : [...profile.unlockedParticles, particleId],
       activeParticle: particleId,
     };
+    profileRef.current = updated;
     saveProfile(updated);
     setProfile(updated);
     return true;

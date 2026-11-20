@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import confetti from 'canvas-confetti';
 import { ArrowRight, Award, Star } from 'lucide-react';
 import { getBadgeDefinitions, getLevelInfo } from '../engine/gamification';
+import { fireVictoryEffect } from '../engine/victoryEffects';
 import { findShortestPath } from '../engine/wordLadder';
 import { useI18n } from '../i18n';
 import { isBotPartner, isWaitingPartner } from '../services/multiplayer';
@@ -52,39 +52,10 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
 
   useEffect(() => {
     if (isAbandoned) return;
-    const colors =
-      profile.activeParticle === 'hearts'
-        ? ['#ff4b8b', '#ff85b3', '#ffc800']
-        : profile.activeParticle === 'lightning'
-        ? ['#1cb0f6', '#ffc800', '#00f5d4']
-        : ['#58cc02', '#1cb0f6', '#ffc800', '#ff9600', '#ce82ff'];
-
-    confetti({
-      particleCount: 85,
-      spread: 75,
-      origin: { y: 0.55 },
-      colors,
-    });
-    const t2 = window.setTimeout(() => {
-      confetti({
-        particleCount: 45,
-        angle: 60,
-        spread: 55,
-        origin: { x: 0.1, y: 0.6 },
-        colors,
-      });
-      confetti({
-        particleCount: 45,
-        angle: 120,
-        spread: 55,
-        origin: { x: 0.9, y: 0.6 },
-        colors,
-      });
-    }, 320);
-
+    const stopEffect = fireVictoryEffect(profile.activeParticle);
     const tXp = window.setTimeout(() => setXpBarAnimated(true), 150);
     return () => {
-      window.clearTimeout(t2);
+      stopEffect();
       window.clearTimeout(tXp);
     };
   }, [profile.activeParticle, isAbandoned]);

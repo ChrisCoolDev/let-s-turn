@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -17,6 +17,7 @@ import {
   getParticleShopItems,
   getThemeShopItems,
 } from '../engine/gamification';
+import { fireVictoryEffect } from '../engine/victoryEffects';
 import { isPlural, useI18n, type TranslationKey } from '../i18n';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
 import { LanguageToggle } from './LanguageToggle';
@@ -244,6 +245,13 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
   const { locale, t } = useI18n();
   const [activeTab, setActiveTab] = useState<'badges' | 'stats' | 'shop'>('badges');
   const [shopNotice, setShopNotice] = useState<string | null>(null);
+  const previewCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      previewCleanupRef.current?.();
+    };
+  }, []);
 
   const levelInfo = getLevelInfo(profile.xp, locale);
   const badgeDefinitions = getBadgeDefinitions(locale);
@@ -273,6 +281,8 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
     const ok = onBuyOrActivateParticle(particleId, price);
     if (ok) {
       setShopNotice(t('profile.noticeParticleEquipped', { name }));
+      previewCleanupRef.current?.();
+      previewCleanupRef.current = fireVictoryEffect(particleId, { preview: true });
     } else {
       setShopNotice(t('profile.noticeNotEnoughStars', { name }));
     }
