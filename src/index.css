@@ -128,6 +128,76 @@
   --key-text: #ffffff;
 }
 
+/* Cosmétique Prestige : Forêt Zen */
+[data-theme='forest'] {
+  --bg-app: #f2f7f2;
+  --bg-surface: #ffffff;
+  --bg-muted: #e4efe4;
+  --bg-tile: #fafdf9;
+  --border-tile: #c5dcc6;
+  --text-primary: #1f3b24;
+  --text-tile: #1f3b24;
+  --text-muted: #5f7e63;
+  --duo-green: #2f9e44;
+  --duo-green-bright: #37b24d;
+  --duo-green-shadow: #237832;
+  --duo-blue: #228be6;
+  --duo-blue-shadow: #1864ab;
+  --key-bg: #ffffff;
+  --key-border: #c5dcc6;
+  --key-text: #1f3b24;
+}
+
+/* Cosmétique Prestige : Or Royal */
+[data-theme='royal'] {
+  --bg-app: #141126;
+  --bg-surface: #1e1938;
+  --bg-muted: #28224a;
+  --bg-tile: #241f42;
+  --border-tile: #483d7a;
+  --text-primary: #f8f5ff;
+  --text-tile: #ffd43b;
+  --text-muted: #b0a8d9;
+  --duo-green: #f59f00;
+  --duo-green-bright: #ffd43b;
+  --duo-green-shadow: #cc7a00;
+  --duo-green-text: #ffd43b;
+  --duo-blue: #9775fa;
+  --duo-blue-shadow: #7048e8;
+  --duo-blue-bg: #2f2558;
+  --duo-blue-text: #d0bfff;
+  --duo-gold-text: #ffe066;
+  --duo-red-text: #ff8787;
+  --key-bg: #2a244c;
+  --key-border: #483d7a;
+  --key-text: #f8f5ff;
+}
+
+/* Cosmétique Prestige : Rétro Arcade */
+[data-theme='arcade'] {
+  --bg-app: #180d2e;
+  --bg-surface: #231442;
+  --bg-muted: #2f1b57;
+  --bg-tile: #2a184f;
+  --border-tile: #6741d9;
+  --text-primary: #fdf4ff;
+  --text-tile: #38bdf8;
+  --text-muted: #c084fc;
+  --duo-green: #22c55e;
+  --duo-green-bright: #4ade80;
+  --duo-green-shadow: #16a34a;
+  --duo-green-text: #4ade80;
+  --duo-blue: #f43f5e;
+  --duo-blue-shadow: #e11d48;
+  --duo-blue-bg: #451635;
+  --duo-blue-text: #fda4af;
+  --duo-gold-text: #fde047;
+  --duo-red-text: #fb7185;
+  --key-bg: #321d5c;
+  --key-border: #6741d9;
+  --key-text: #fdf4ff;
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -191,6 +261,30 @@ body {
   border-color: var(--duo-gold);
   color: var(--duo-gold-text);
   animation: pulseHint 1.2s infinite ease-in-out;
+}
+
+.duo-tile-combo {
+  border-color: var(--duo-orange);
+  animation: comboGlow 1.5s infinite ease-in-out;
+}
+
+/* Styles de Tuiles 3D déblocables */
+[data-tile-style='wood'] .duo-tile:not(.duo-tile-selected):not(.duo-tile-error):not(.duo-tile-hint) {
+  background-color: #f6e7c8;
+  border-color: #d0ac72;
+  color: #533613;
+}
+
+[data-tile-style='neon'] .duo-tile:not(.duo-tile-selected):not(.duo-tile-error):not(.duo-tile-hint) {
+  background-color: color-mix(in srgb, var(--duo-blue) 12%, var(--bg-tile));
+  border-color: var(--duo-blue);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--duo-blue) 28%, transparent);
+}
+
+[data-tile-style='gold'] .duo-tile:not(.duo-tile-selected):not(.duo-tile-error):not(.duo-tile-hint) {
+  background: linear-gradient(180deg, #fff3b0 0%, #ffd43b 100%);
+  border-color: #d99300;
+  color: #5c3d00;
 }
 
 /* Boutons tactiles 3D Duolingo */
@@ -279,6 +373,12 @@ body {
   border-bottom-width: 2px;
 }
 
+.duo-key-golden {
+  border-color: var(--duo-gold);
+  background-color: var(--duo-gold-bg);
+  color: var(--duo-gold-text);
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   15% { transform: translateX(-8px); }
@@ -336,9 +436,15 @@ body {
   .animate-fade-in,
   .animate-pop-in,
   .animate-tour-pop,
-  .animate-tour-ring {
+  .animate-tour-ring,
+  .duo-tile-combo {
     animation: none;
   }
+}
+
+@keyframes comboGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 150, 0, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 150, 0, 0); }
 }
 
 @keyframes pulseHint {

@@ -6,12 +6,43 @@ import { GameBoardScreen } from './components/GameBoardScreen';
 import { HubScreen } from './components/HubScreen';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { VictoryScreen } from './components/VictoryScreen';
-import { evaluateNewBadges } from './engine/gamification';
-import { generateWordPair, isOneLetterDiff } from './engine/wordLadder';
+import {
+  applyXpWithLevelUp,
+  computeDuelScores,
+  DAILY_CHEST_STARS,
+  DAILY_CHEST_XP,
+  DUEL_MVP_BONUS_STARS,
+  ensureTodayQuests,
+  evaluateBadgeUpgrades,
+  getBotDifficultyConfig,
+  getLevelInfo,
+  getLocalDateString,
+  GOLDEN_LETTER_BONUS_STARS,
+  incrementDailyQuests,
+  MAX_STREAK_FREEZES,
+  normalizeProfile,
+  reconcileDailyStreak,
+  STREAK_FREEZE_PRICE,
+  TEMPO_COMBO_WINDOW_MS,
+  TEMPO_COMBO_XP_PER_STEP,
+  TIME_SHIELD_BONUS_MS,
+  TIME_SHIELD_PRICE,
+  updateDuoStreakOnWin,
+} from './engine/gamification';
+import { fireVictoryEffect } from './engine/victoryEffects';
+import {
+  generateWordPair,
+  getRoomGoldenLetter,
+  hasClaimedGoldenLetter,
+  isOneLetterDiff,
+  pickGoldenLetter,
+} from './engine/wordLadder';
 import { translate, useI18n } from './i18n';
 import { loadTourState, markTourDone, type TourState } from './services/tour';
 import {
   bootstrapSupabaseState,
+  broadcastQuickReaction,
+  broadcastRoomNudge,
   broadcastRoomUpdate,
   createInitialProfile,
   createMiyuPresence,
@@ -21,6 +52,7 @@ import {
   ensureSupabaseSession,
   generateRoomCode,
   generateUuid,
+  getRoomTurnTimeoutMs,
   isBotPartner,
   isWaitingPartner,
   joinRoomRemoteOrLocal,
@@ -43,13 +75,21 @@ import {
   WAITING_PARTNER_ID,
 } from './services/multiplayer';
 import type {
+  AvatarFrameId,
   AvatarId,
+  BadgeUpgradeResult,
+  BotDifficulty,
+  DailyQuestKind,
   GameMode,
   GameRoom,
   Language,
+  NudgeEvent,
   ParticleEffectId,
   PlayerProfile,
+  QuickReactionEvent,
+  QuickReactionId,
   ThemeId,
+  TileStyleId,
   WordLength,
   WordMove,
 } from './types/game';
@@ -108,14 +148,24 @@ export function App() {
 
   const [lastVictoryMeta, setLastVictoryMeta] = useState<{
     roomCode: string;
-    newlyUnlockedBadges: string[];
+    badgeUpgrades: BadgeUpgradeResult[];
     earnedXp: number;
     earnedStars: number;
+    leveledUpTo: number | null;
+    levelUpBonusStars: number;
+    tempoBonusXp: number;
+    goldenRouteClaimed: boolean;
+    maxTempoCombo: number;
+    duelMvpBonusStars: number;
+    duoStreakDays: number;
   } | null>(null);
+  const [roomReactions, setRoomReactions] = useState<Record<string, QuickReactionEvent>>({});
+  const [nudgedRooms, setNudgedRooms] = useState<Record<string, number>>({});
 
   const bootstrappedRef = useRef(false);
   const rewardedRoomsRef = useRef<Set<string>>(new Set());
   const lastLocalMutationRef = useRef<Record<string, number>>({});
+  const reactionTimersRef = useRef<Record<string, number>>({});
   const hubNoticeTimerRef = useRef<number | null>(null);
   const [authBootstrapped, setAuthBootstrapped] = useState(false);
   const [tourState, setTourState] = useState<TourState>(() => loadTourState());
@@ -136,29 +186,33 @@ export function App() {
   const profileRef = useRef(profile);
   profileRef.current = profile;
 
-  // Sync theme attribute to <html> + mobile PWA status bar theme-color
+  // Sync theme + tile style attributes to <html> + mobile PWA status bar theme-color
   useEffect(() => {
     const theme = profile?.activeTheme ?? 'classic';
+    const tileStyle = profile?.activeTileStyle ?? 'classic';
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-tile-style', tileStyle);
     const themeColors: Record<ThemeId, string> = {
       classic: '#ffffff',
       oled: '#000000',
       cyberpunk: '#0d0f1a',
       nyt: '#f7f4ec',
       pastel: '#fff6f9',
+      forest: '#f2f7f2',
+      royal: '#141126',
+      arcade: '#180d2e',
     };
+    const isDarkTheme =
+      theme === 'oled' || theme === 'cyberpunk' || theme === 'royal' || theme === 'arcade';
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
       metaTheme.setAttribute('content', themeColors[theme] ?? '#ffffff');
     }
     const metaAppleBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
     if (metaAppleBar) {
-      metaAppleBar.setAttribute(
-        'content',
-        theme === 'oled' || theme === 'cyberpunk' ? 'black-translucent' : 'default'
-      );
+      metaAppleBar.setAttribute('content', isDarkTheme ? 'black-translucent' : 'default');
     }
-  }, [profile?.activeTheme]);
+  }, [profile?.activeTheme, profile?.activeTileStyle]);
 
   // Mobile Back button / swipe-back gesture navigation (prevents accidental PWA exit on Android/iOS)
   const isPoppingHistoryRef = useRef(false);
@@ -245,6 +299,48 @@ export function App() {
     };
   }, [profile?.playerId]);
 
+  // Daily streak reconciliation (freeze / reset) and midnight daily quests refresh
+  useEffect(() => {
+    if (!profile?.playerId) return;
+
+    const checkDailyState = () => {
+      const current = profileRef.current;
+      if (!current) return;
+      const todayStr = getLocalDateString();
+      const prevQuestDate = current.dailyQuests?.date;
+      const normalized = normalizeProfile(current, todayStr);
+      const reconciled = reconcileDailyStreak(normalized, todayStr);
+
+      if (
+        reconciled.freezeConsumed ||
+        reconciled.streakLost ||
+        prevQuestDate !== todayStr ||
+        normalized.dailyQuests?.date !== prevQuestDate
+      ) {
+        profileRef.current = reconciled.profile;
+        saveProfile(reconciled.profile);
+        setProfile(reconciled.profile);
+      }
+
+      if (reconciled.freezeConsumed) {
+        showHubNotice(
+          translate('hub.freezeSavedNotice', { streak: reconciled.profile.streak })
+        );
+      } else if (reconciled.streakLost) {
+        showHubNotice(translate('hub.streakResetNotice'));
+      }
+    };
+
+    checkDailyState();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkDailyState();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [profile?.playerId, showHubNotice]);
+
   // Bootstrap Supabase anonymous session & sync existing profile / rooms
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -330,9 +426,16 @@ export function App() {
       }
       setLastVictoryMeta({
         roomCode: completedRoom.code,
-        newlyUnlockedBadges: [],
+        badgeUpgrades: [],
         earnedXp: 0,
         earnedStars: 0,
+        leveledUpTo: null,
+        levelUpBonusStars: 0,
+        tempoBonusXp: 0,
+        goldenRouteClaimed: false,
+        maxTempoCombo: completedRoom.maxTempoCombo ?? 0,
+        duelMvpBonusStars: 0,
+        duoStreakDays: 0,
       });
       setActiveRoomCode(completedRoom.code);
       setScreen('victory');
@@ -343,45 +446,98 @@ export function App() {
     const durationSeconds = completedRoom.completedAt
       ? Math.max(1, Math.round((completedRoom.completedAt - completedRoom.startedAt) / 1000))
       : 45;
-    const starsEarned =
+    const baseStars =
       actualSteps <= completedRoom.optimalPar
         ? 3
         : actualSteps <= completedRoom.optimalPar + 2
         ? 2
         : 1;
-    const xpEarned = 40 + starsEarned * 20;
+    const isBotRoom = isBotPartner(completedRoom.partnerPlayer.playerId);
+    const botCfg = isBotRoom
+      ? getBotDifficultyConfig(completedRoom.botDifficulty)
+      : null;
+    const starsEarned = botCfg ? baseStars * botCfg.winStarMultiplier : baseStars;
+    const goldenRouteClaimed = hasClaimedGoldenLetter(completedRoom);
+    const goldenBonusStars = goldenRouteClaimed ? GOLDEN_LETTER_BONUS_STARS : 0;
+    const tempoBonusXp = completedRoom.tempoBonusXp ?? 0;
+    const baseXp = 40 + baseStars * 20;
+    const scaledXp = botCfg
+      ? Math.round(baseXp * (1 + botCfg.xpBonusPct / 100))
+      : baseXp;
+    const totalXpEarned = scaledXp + tempoBonusXp;
+
+    const todayStr = getLocalDateString();
+    const { profile: syncedProfile } = reconcileDailyStreak(
+      normalizeProfile(activeProfile, todayStr),
+      todayStr
+    );
 
     const wordsInGame = [
       completedRoom.startWord,
       ...completedRoom.moves.map((m) => m.word),
     ];
-    const uniqueWords = Array.from(new Set([...activeProfile.uniqueWordsUsed, ...wordsInGame]));
+    const uniqueWords = Array.from(new Set([...syncedProfile.uniqueWordsUsed, ...wordsInGame]));
 
-    const { partner } = resolveRoomParticipants(completedRoom, activeProfile);
+    const { me, partner, waitingForPartner } = resolveRoomParticipants(
+      completedRoom,
+      syncedProfile
+    );
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const shouldIncrementStreak = activeProfile.lastPlayedDate !== todayStr;
+    const shouldIncrementStreak = syncedProfile.lastPlayedDate !== todayStr;
+    const nextStreak = shouldIncrementStreak ? syncedProfile.streak + 1 : syncedProfile.streak;
+    const nextBestStreak = Math.max(syncedProfile.bestStreak ?? 0, nextStreak);
+    const isBotMatch = isBotPartner(partner.playerId);
 
-    const updatedProfile: PlayerProfile = {
-      ...activeProfile,
-      xp: activeProfile.xp + xpEarned,
-      stars: activeProfile.stars + starsEarned,
-      streak: shouldIncrementStreak ? activeProfile.streak + 1 : activeProfile.streak,
+    const hasDuoPartner = !waitingForPartner && partner.playerId !== me.playerId;
+    const duoStreakUpdate = hasDuoPartner
+      ? updateDuoStreakOnWin(syncedProfile, partner, todayStr)
+      : { duoStreaks: syncedProfile.duoStreaks ?? {}, newStreak: 0 };
+
+    const duelScores =
+      completedRoom.mode === 'duel' ? computeDuelScores(completedRoom, me.playerId) : null;
+    const duelMvpBonusStars = duelScores?.isMeWinning ? DUEL_MVP_BONUS_STARS : 0;
+
+    const questDeltas: Partial<Record<DailyQuestKind, number>> = {
+      win_games: 1,
+    };
+    if (completedRoom.hintsUsed === 0) questDeltas.no_hint_win = 1;
+    if (actualSteps <= completedRoom.optimalPar) questDeltas.par_win = 1;
+    if (completedRoom.wordLength >= 5) questDeltas.five_letter_win = 1;
+    if (completedRoom.mode === 'daily') questDeltas.daily_challenge_win = 1;
+    if (isBotMatch) questDeltas.beat_miyu = 1;
+
+    const nextDailyQuests = incrementDailyQuests(
+      ensureTodayQuests(syncedProfile, todayStr),
+      questDeltas
+    );
+
+    const draftProfile: PlayerProfile = {
+      ...syncedProfile,
+      stars: syncedProfile.stars + starsEarned + goldenBonusStars + duelMvpBonusStars,
+      streak: nextStreak,
+      bestStreak: nextBestStreak,
       lastPlayedDate: todayStr,
-      gamesPlayed: activeProfile.gamesPlayed + 1,
-      gamesWon: activeProfile.gamesWon + 1,
+      gamesPlayed: syncedProfile.gamesPlayed + 1,
+      gamesWon: syncedProfile.gamesWon + 1,
       optimalWins:
         actualSteps <= completedRoom.optimalPar
-          ? activeProfile.optimalWins + 1
-          : activeProfile.optimalWins,
+          ? syncedProfile.optimalWins + 1
+          : syncedProfile.optimalWins,
       noHintWins:
-        completedRoom.hintsUsed === 0 ? activeProfile.noHintWins + 1 : activeProfile.noHintWins,
+        completedRoom.hintsUsed === 0 ? syncedProfile.noHintWins + 1 : syncedProfile.noHintWins,
+      fastWins: (syncedProfile.fastWins ?? 0) + (durationSeconds <= 45 ? 1 : 0),
+      fiveLetterWins:
+        (syncedProfile.fiveLetterWins ?? 0) + (completedRoom.wordLength >= 5 ? 1 : 0),
+      miyuWins: (syncedProfile.miyuWins ?? 0) + (isBotMatch ? 1 : 0),
+      duelWins: (syncedProfile.duelWins ?? 0) + (duelScores?.isMeWinning ? 1 : 0),
+      duoStreaks: duoStreakUpdate.duoStreaks,
       fastestWinSeconds:
-        activeProfile.fastestWinSeconds === null
+        syncedProfile.fastestWinSeconds === null
           ? durationSeconds
-          : Math.min(activeProfile.fastestWinSeconds, durationSeconds),
-      longestWordSolved: Math.max(activeProfile.longestWordSolved, completedRoom.wordLength),
+          : Math.min(syncedProfile.fastestWinSeconds, durationSeconds),
+      longestWordSolved: Math.max(syncedProfile.longestWordSolved, completedRoom.wordLength),
       uniqueWordsUsed: uniqueWords,
+      dailyQuests: nextDailyQuests,
       savedBestChains: [
         {
           id: `chain-${Date.now()}`,
@@ -394,33 +550,45 @@ export function App() {
           language: completedRoom.language,
           completedAt: Date.now(),
         },
-        ...activeProfile.savedBestChains,
+        ...syncedProfile.savedBestChains,
       ].slice(0, 15),
     };
 
-    const newlyUnlocked = evaluateNewBadges(updatedProfile, {
-      durationSeconds,
-      actualSteps,
-      optimalPar: completedRoom.optimalPar,
-      hintsUsed: completedRoom.hintsUsed,
-      wordLength: completedRoom.wordLength,
-    });
+    const badgeEval = evaluateBadgeUpgrades(draftProfile);
+    const xpResult = applyXpWithLevelUp(
+      draftProfile.xp,
+      draftProfile.stars + badgeEval.totalBonusStars,
+      totalXpEarned
+    );
 
-    if (newlyUnlocked.length > 0) {
-      updatedProfile.unlockedBadges = [
-        ...updatedProfile.unlockedBadges,
-        ...newlyUnlocked,
-      ];
-    }
+    const updatedProfile: PlayerProfile = {
+      ...draftProfile,
+      xp: xpResult.xp,
+      stars: xpResult.stars,
+      badgeTiers: badgeEval.badgeTiers,
+      unlockedBadges: badgeEval.unlockedBadges,
+    };
 
     profileRef.current = updatedProfile;
     saveProfile(updatedProfile);
     setProfile(updatedProfile);
     setLastVictoryMeta({
       roomCode: completedRoom.code,
-      newlyUnlockedBadges: newlyUnlocked,
-      earnedXp: xpEarned,
-      earnedStars: starsEarned,
+      badgeUpgrades: badgeEval.upgrades,
+      earnedXp: totalXpEarned,
+      earnedStars:
+        starsEarned +
+        goldenBonusStars +
+        duelMvpBonusStars +
+        badgeEval.totalBonusStars +
+        xpResult.levelUpBonusStars,
+      leveledUpTo: xpResult.levelsGained > 0 ? xpResult.newLevel : null,
+      levelUpBonusStars: xpResult.levelUpBonusStars,
+      tempoBonusXp,
+      goldenRouteClaimed,
+      maxTempoCombo: completedRoom.maxTempoCombo ?? 0,
+      duelMvpBonusStars,
+      duoStreakDays: duoStreakUpdate.newStreak,
     });
     setActiveRoomCode(completedRoom.code);
     setScreen('victory');
@@ -592,9 +760,37 @@ export function App() {
           roomsRef.current = next;
           return next;
         });
+      },
+      (ev: QuickReactionEvent) => {
+        if (ev.playerId === playerId) return;
+        setRoomReactions((prev) => ({ ...prev, [ev.roomCode]: ev }));
+        if (reactionTimersRef.current[ev.roomCode]) {
+          window.clearTimeout(reactionTimersRef.current[ev.roomCode]);
+        }
+        reactionTimersRef.current[ev.roomCode] = window.setTimeout(() => {
+          setRoomReactions((prev) => {
+            if (prev[ev.roomCode]?.id !== ev.id) return prev;
+            const copy = { ...prev };
+            delete copy[ev.roomCode];
+            return copy;
+          });
+        }, 2800);
+      },
+      (ev: NudgeEvent) => {
+        if (ev.fromPlayerId === playerId) return;
+        const targetRoom = roomsRef.current[ev.roomCode];
+        const msg = targetRoom
+          ? translate('hub.nudgeReceived', {
+              name: ev.fromPlayerName,
+              start: targetRoom.startWord,
+              target: targetRoom.targetWord,
+            })
+          : ev.fromPlayerName;
+        showHubNotice(msg);
+        requestPushPermissionAndNotify("Let's Turn", msg);
       }
     );
-  }, [playerId]);
+  }, [playerId, showHubNotice]);
 
   const handleSubmitMove = useCallback((roomCode: string, nextWord: string) => {
     const activeProfile = profileRef.current;
@@ -604,12 +800,16 @@ export function App() {
     const room = prev[roomCode];
     if (!room || room.status === 'completed') return;
 
-    const { me, partner, isMyTurn } = resolveRoomParticipants(room, activeProfile);
+    const { me, partner, waitingForPartner, isMyTurn } = resolveRoomParticipants(
+      room,
+      activeProfile
+    );
     if (!isMyTurn) return;
 
     const diff = isOneLetterDiff(room.currentWord, nextWord);
     if (!diff.valid) return;
 
+    const now = Date.now();
     const actor = me;
     const nextTurnPlayerId =
       partner.playerId === me.playerId ? WAITING_PARTNER_ID : partner.playerId;
@@ -625,11 +825,49 @@ export function App() {
       playerName: actor.name,
       playerAvatarId: actor.avatarId,
       playerColor: actor.color,
-      timestamp: Date.now(),
+      timestamp: now,
     };
 
     const reachedTarget = nextWord === room.targetWord;
-    const now = Date.now();
+    const elapsedMs = Math.max(0, now - (room.turnStartedAt ?? room.startedAt));
+    const hasActiveCountdown = !waitingForPartner && partner.playerId !== me.playerId;
+    const isClutch = hasActiveCountdown && getRoomTurnTimeoutMs(room) - elapsedMs <= 3500;
+    const todayStr = getLocalDateString();
+    const normalized = normalizeProfile(activeProfile, todayStr);
+    const updatedQuests = incrementDailyQuests(ensureTodayQuests(normalized, todayStr), {
+      play_moves: 1,
+      ...(elapsedMs <= 10_000 ? { fast_moves: 1 } : {}),
+    });
+
+    let nextProfile: PlayerProfile = {
+      ...normalized,
+      clutchMoves: (normalized.clutchMoves ?? 0) + (isClutch ? 1 : 0),
+      dailyQuests: updatedQuests,
+    };
+    if (!reachedTarget && isClutch) {
+      const badgeEval = evaluateBadgeUpgrades(nextProfile);
+      if (badgeEval.upgrades.length > 0) {
+        nextProfile = {
+          ...nextProfile,
+          stars: nextProfile.stars + badgeEval.totalBonusStars,
+          badgeTiers: badgeEval.badgeTiers,
+          unlockedBadges: badgeEval.unlockedBadges,
+        };
+      }
+    }
+    profileRef.current = nextProfile;
+    saveProfile(nextProfile);
+    setProfile(nextProfile);
+
+    const nextTempoCombo = elapsedMs <= TEMPO_COMBO_WINDOW_MS ? (room.tempoCombo ?? 0) + 1 : 0;
+    const nextMaxTempoCombo = Math.max(room.maxTempoCombo ?? 0, nextTempoCombo);
+    const tempoXpGain = nextTempoCombo >= 2 ? TEMPO_COMBO_XP_PER_STEP : 0;
+    const nextTempoBonusXp = (room.tempoBonusXp ?? 0) + tempoXpGain;
+    const roomGoldenLetter = getRoomGoldenLetter(room);
+    const nextGoldenClaimed = Boolean(
+      room.goldenLetterClaimed || (roomGoldenLetter && nextWord.includes(roomGoldenLetter))
+    );
+
     const updatedRoom: GameRoom = {
       ...room,
       currentWord: nextWord,
@@ -640,6 +878,11 @@ export function App() {
       status: reachedTarget ? 'completed' : 'active',
       completedAt: reachedTarget ? now : undefined,
       winnerPlayerId: reachedTarget ? actor.playerId : undefined,
+      tempoCombo: nextTempoCombo,
+      maxTempoCombo: nextMaxTempoCombo,
+      tempoBonusXp: nextTempoBonusXp,
+      goldenLetter: roomGoldenLetter ?? room.goldenLetter,
+      goldenLetterClaimed: nextGoldenClaimed,
       hostPlayer: { ...room.hostPlayer, isTyping: false },
       partnerPlayer: { ...room.partnerPlayer, isTyping: false },
     };
@@ -736,6 +979,7 @@ export function App() {
               ...cur,
               currentTurnPlayerId: me.playerId,
               turnStartedAt: now,
+              tempoCombo: 0,
               hostPlayer: { ...cur.hostPlayer, isTyping: false },
               partnerPlayer: { ...cur.partnerPlayer, isTyping: false },
             };
@@ -748,6 +992,15 @@ export function App() {
           }
 
           const reachedTarget = move.word === cur.targetWord;
+          const botElapsedMs = Math.max(0, now - (cur.turnStartedAt ?? cur.startedAt));
+          const botNextCombo = botElapsedMs <= TEMPO_COMBO_WINDOW_MS ? (cur.tempoCombo ?? 0) + 1 : 0;
+          const botMaxCombo = Math.max(cur.maxTempoCombo ?? 0, botNextCombo);
+          const botTempoXpGain = botNextCombo >= 2 ? TEMPO_COMBO_XP_PER_STEP : 0;
+          const botNextTempoXp = (cur.tempoBonusXp ?? 0) + botTempoXpGain;
+          const botGoldenLetter = getRoomGoldenLetter(cur);
+          const botGoldenClaimed = Boolean(
+            cur.goldenLetterClaimed || (botGoldenLetter && move.word.includes(botGoldenLetter))
+          );
           const updated: GameRoom = {
             ...cur,
             currentWord: move.word,
@@ -759,6 +1012,11 @@ export function App() {
             completedAt: reachedTarget ? now : undefined,
             winnerPlayerId: reachedTarget ? curPartner.playerId : undefined,
             autoPartnerEnabled: true,
+            tempoCombo: botNextCombo,
+            maxTempoCombo: botMaxCombo,
+            tempoBonusXp: botNextTempoXp,
+            goldenLetter: botGoldenLetter ?? cur.goldenLetter,
+            goldenLetterClaimed: botGoldenClaimed,
             hostPlayer: { ...cur.hostPlayer, isTyping: false },
             partnerPlayer: { ...cur.partnerPlayer, isTyping: false },
           };
@@ -949,7 +1207,8 @@ export function App() {
   const handleCreateRoom = (
     language: Language,
     wordLength: WordLength,
-    mode: GameMode
+    mode: GameMode,
+    botDifficulty?: BotDifficulty
   ): GameRoom => {
     if (!profile) throw new Error('Profile required');
     const newRoom = createNewRoom(
@@ -958,15 +1217,18 @@ export function App() {
       wordLength,
       mode,
       undefined,
-      Object.keys(roomsRef.current)
+      Object.keys(roomsRef.current),
+      botDifficulty && mode !== 'daily' ? { botDifficulty } : undefined
     );
     lastLocalMutationRef.current[newRoom.code] = Date.now();
     const next = { ...roomsRef.current, [newRoom.code]: newRoom };
     roomsRef.current = next;
     saveRooms(next);
     setRooms(next);
-    broadcastRoomUpdate(newRoom, profile.playerId);
-    void createOrUpsertRemoteRoom(newRoom);
+    if (!botDifficulty || mode === 'daily') {
+      broadcastRoomUpdate(newRoom, profile.playerId);
+      void createOrUpsertRemoteRoom(newRoom);
+    }
     return newRoom;
   };
 
@@ -1013,6 +1275,10 @@ export function App() {
     const trimmedMoves = room.moves.slice(0, -1);
     const revertedWord =
       trimmedMoves.length > 0 ? trimmedMoves[trimmedMoves.length - 1].word : room.startWord;
+    const undoGoldenLetter = getRoomGoldenLetter(room);
+    const undoGoldenClaimed = Boolean(
+      undoGoldenLetter && trimmedMoves.some((m) => !m.isUndoPenalty && m.word.includes(undoGoldenLetter))
+    );
 
     const now = Date.now();
     const updated: GameRoom = {
@@ -1023,6 +1289,8 @@ export function App() {
       currentTurnPlayerId: matchedById ? profile.playerId : me.playerId,
       turnStartedAt: now,
       lastTurnPass: undefined,
+      tempoCombo: 0,
+      goldenLetterClaimed: undoGoldenClaimed,
       hostPlayer: { ...room.hostPlayer, isTyping: false },
       partnerPlayer: { ...room.partnerPlayer, isTyping: false },
     };
@@ -1063,6 +1331,7 @@ export function App() {
 
     const { partner: otherPlayer } = resolveRoomParticipants(oldRoom, profile);
     const rematchMode: GameMode = oldRoom.mode === 'daily' ? 'coop' : oldRoom.mode;
+    const rematchBotDifficulty = oldRoom.botDifficulty;
 
     const pair = generateWordPair(
       oldRoom.language,
@@ -1087,6 +1356,7 @@ export function App() {
       language: oldRoom.language,
       wordLength: oldRoom.wordLength,
       mode: rematchMode,
+      botDifficulty: rematchBotDifficulty,
       startWord: pair.startWord,
       targetWord: pair.targetWord,
       currentWord: pair.startWord,
@@ -1116,6 +1386,17 @@ export function App() {
       abandoned: undefined,
       abandonedByPlayerId: undefined,
       abandonedByName: undefined,
+      goldenLetter:
+        pickGoldenLetter(
+          pair.startWord,
+          pair.targetWord,
+          pair.optimalPath,
+          oldRoom.language
+        ) ?? undefined,
+      goldenLetterClaimed: false,
+      tempoCombo: 0,
+      maxTempoCombo: 0,
+      tempoBonusXp: 0,
     };
 
     lastLocalMutationRef.current[newCode] = now;
@@ -1123,8 +1404,10 @@ export function App() {
     roomsRef.current = next;
     saveRooms(next);
     setRooms(next);
-    void createOrUpsertRemoteRoom(freshRoom);
-    broadcastRoomUpdate(freshRoom, profile.playerId, oldRoom.code);
+    if (!nextAutoBot) {
+      void createOrUpsertRemoteRoom(freshRoom);
+      broadcastRoomUpdate(freshRoom, profile.playerId, oldRoom.code);
+    }
     setActiveRoomCode(newCode);
     setScreen('board');
   };
@@ -1219,6 +1502,214 @@ export function App() {
     setProfile(updated);
     return true;
   };
+
+  const handleBuyOrActivateTileStyle = (
+    tileStyleId: TileStyleId,
+    priceStars: number
+  ): boolean => {
+    const active = profileRef.current;
+    if (!active) return false;
+    const unlocked = active.unlockedTileStyles ?? ['classic'];
+    const alreadyOwned = unlocked.includes(tileStyleId);
+    if (!alreadyOwned && active.stars < priceStars) return false;
+
+    const updated: PlayerProfile = {
+      ...active,
+      stars: alreadyOwned ? active.stars : active.stars - priceStars,
+      unlockedTileStyles: alreadyOwned ? unlocked : [...unlocked, tileStyleId],
+      activeTileStyle: tileStyleId,
+    };
+    profileRef.current = updated;
+    saveProfile(updated);
+    setProfile(updated);
+    return true;
+  };
+
+  const handleBuyOrActivateAvatarFrame = (
+    frameId: AvatarFrameId,
+    priceStars: number
+  ): boolean => {
+    const active = profileRef.current;
+    if (!active) return false;
+    const unlocked = active.unlockedFrames ?? ['none'];
+    const alreadyOwned = unlocked.includes(frameId);
+    if (!alreadyOwned && active.stars < priceStars) return false;
+
+    const updated: PlayerProfile = {
+      ...active,
+      stars: alreadyOwned ? active.stars : active.stars - priceStars,
+      unlockedFrames: alreadyOwned ? unlocked : [...unlocked, frameId],
+      activeFrame: frameId,
+    };
+    profileRef.current = updated;
+    saveProfile(updated);
+    setProfile(updated);
+    return true;
+  };
+
+  const handleUseTimeShield = (roomCode: string): boolean => {
+    const active = profileRef.current;
+    const room = roomsRef.current[roomCode];
+    if (!active || !room || room.status !== 'active') return false;
+
+    const { isMyTurn, waitingForPartner } = resolveRoomParticipants(room, active);
+    if (!isMyTurn || waitingForPartner) return false;
+    if (active.stars < TIME_SHIELD_PRICE) return false;
+
+    const now = Date.now();
+    const timeoutMs = getRoomTurnTimeoutMs(room);
+    const turnStart = room.turnStartedAt ?? room.startedAt;
+    const remainingMs = turnStart + timeoutMs - now;
+    if (remainingMs > 12_500) return false;
+
+    const updatedProfile: PlayerProfile = {
+      ...active,
+      stars: active.stars - TIME_SHIELD_PRICE,
+    };
+    profileRef.current = updatedProfile;
+    saveProfile(updatedProfile);
+    setProfile(updatedProfile);
+
+    const updatedRoom: GameRoom = {
+      ...room,
+      turnStartedAt: Math.min(now, turnStart + TIME_SHIELD_BONUS_MS),
+      timeShieldsUsed: (room.timeShieldsUsed ?? 0) + 1,
+    };
+    lastLocalMutationRef.current[roomCode] = now;
+    const nextRooms = { ...roomsRef.current, [roomCode]: updatedRoom };
+    roomsRef.current = nextRooms;
+    saveRooms(nextRooms);
+    setRooms(nextRooms);
+    broadcastRoomUpdate(updatedRoom, active.playerId);
+    void updateRemoteRoomState(updatedRoom);
+    return true;
+  };
+
+  const handleBuyStreakFreeze = (): 'ok' | 'maxed' | 'no_stars' => {
+    const active = profileRef.current;
+    if (!active) return 'no_stars';
+    const currentCount = active.streakFreezes ?? 0;
+    if (currentCount >= MAX_STREAK_FREEZES) return 'maxed';
+    if (active.stars < STREAK_FREEZE_PRICE) return 'no_stars';
+
+    const updated: PlayerProfile = {
+      ...active,
+      stars: active.stars - STREAK_FREEZE_PRICE,
+      streakFreezes: currentCount + 1,
+    };
+    profileRef.current = updated;
+    saveProfile(updated);
+    setProfile(updated);
+    return 'ok';
+  };
+
+  const handleClaimDailyQuest = useCallback(
+    (questId: string) => {
+      const current = profileRef.current;
+      if (!current) return;
+      const todayStr = getLocalDateString();
+      const normalized = normalizeProfile(current, todayStr);
+      const questState = ensureTodayQuests(normalized, todayStr);
+      const targetQuest = questState.quests.find((q) => q.id === questId);
+      if (!targetQuest || targetQuest.claimed || targetQuest.progress < targetQuest.target) {
+        return;
+      }
+
+      const nextQuests = questState.quests.map((q) =>
+        q.id === questId ? { ...q, claimed: true } : q
+      );
+      const xpResult = applyXpWithLevelUp(
+        normalized.xp,
+        normalized.stars + targetQuest.rewardStars,
+        targetQuest.rewardXp
+      );
+
+      const updated: PlayerProfile = {
+        ...normalized,
+        xp: xpResult.xp,
+        stars: xpResult.stars,
+        dailyQuests: {
+          ...questState,
+          quests: nextQuests,
+        },
+      };
+      profileRef.current = updated;
+      saveProfile(updated);
+      setProfile(updated);
+
+      if (xpResult.levelsGained > 0) {
+        fireVictoryEffect(normalized.activeParticle, { preview: true });
+        showHubNotice(
+          translate('quests.noticeLevelUp', {
+            level: xpResult.newLevel,
+            stars: xpResult.levelUpBonusStars,
+          })
+        );
+      } else {
+        showHubNotice(
+          translate('quests.noticeReward', {
+            stars: targetQuest.rewardStars,
+            xp: targetQuest.rewardXp,
+          })
+        );
+      }
+    },
+    [showHubNotice]
+  );
+
+  const handleClaimDailyChest = useCallback(() => {
+    const current = profileRef.current;
+    if (!current) return;
+    const todayStr = getLocalDateString();
+    const normalized = normalizeProfile(current, todayStr);
+    const questState = ensureTodayQuests(normalized, todayStr);
+    if (questState.chestClaimed) return;
+    const allDone = questState.quests.every((q) => q.progress >= q.target);
+    if (!allDone) return;
+
+    let extraStars = DAILY_CHEST_STARS;
+    let extraXp = DAILY_CHEST_XP;
+    const nextQuests = questState.quests.map((q) => {
+      if (!q.claimed && q.progress >= q.target) {
+        extraStars += q.rewardStars;
+        extraXp += q.rewardXp;
+        return { ...q, claimed: true };
+      }
+      return q;
+    });
+
+    const xpResult = applyXpWithLevelUp(
+      normalized.xp,
+      normalized.stars + extraStars,
+      extraXp
+    );
+
+    const updated: PlayerProfile = {
+      ...normalized,
+      xp: xpResult.xp,
+      stars: xpResult.stars,
+      dailyQuests: {
+        ...questState,
+        quests: nextQuests,
+        chestClaimed: true,
+      },
+    };
+    profileRef.current = updated;
+    saveProfile(updated);
+    setProfile(updated);
+
+    fireVictoryEffect(normalized.activeParticle, { preview: true });
+    if (xpResult.levelsGained > 0) {
+      showHubNotice(
+        translate('quests.noticeLevelUp', {
+          level: xpResult.newLevel,
+          stars: xpResult.levelUpBonusStars,
+        })
+      );
+    } else {
+      showHubNotice(translate('quests.noticeReward', { stars: extraStars, xp: extraXp }));
+    }
+  }, [showHubNotice]);
 
   const activeRoom = activeRoomCode ? rooms[activeRoomCode] : null;
 
@@ -1407,6 +1898,35 @@ export function App() {
     setScreen(room?.status === 'completed' ? 'victory' : 'board');
   }, []);
 
+  const handleSendReaction = useCallback((roomCode: string, reactionId: QuickReactionId) => {
+    const activeProfile = profileRef.current;
+    if (!activeProfile) return;
+    broadcastQuickReaction({
+      id: generateUuid(),
+      roomCode,
+      playerId: activeProfile.playerId,
+      playerName: activeProfile.name,
+      reactionId,
+      timestamp: Date.now(),
+    });
+  }, []);
+
+  const handleNudgeRoom = useCallback((room: GameRoom) => {
+    const activeProfile = profileRef.current;
+    if (!activeProfile) return;
+    const { partner, waitingForPartner, isBot } = resolveRoomParticipants(room, activeProfile);
+    if (waitingForPartner || isBot || partner.playerId === activeProfile.playerId) return;
+    const now = Date.now();
+    broadcastRoomNudge({
+      roomCode: room.code,
+      fromPlayerId: activeProfile.playerId,
+      fromPlayerName: activeProfile.name,
+      toPlayerId: partner.playerId,
+      timestamp: now,
+    });
+    setNudgedRooms((prev) => ({ ...prev, [room.code]: now }));
+  }, []);
+
   if (!profile) {
     return (
       <OnboardingScreen
@@ -1432,6 +1952,10 @@ export function App() {
           onJoinByCode={handleJoinByCode}
           onOpenCollection={() => setScreen('collection')}
           onStartTour={() => setActiveTour('hub')}
+          onClaimQuest={handleClaimDailyQuest}
+          onClaimChest={handleClaimDailyChest}
+          nudgedRooms={nudgedRooms}
+          onNudgeRoom={handleNudgeRoom}
         />
       )}
 
@@ -1444,6 +1968,7 @@ export function App() {
           onSubmitMove={handleSubmitMove}
           onUndoMove={handleUndoMove}
           onUseHint={handleUseHint}
+          onUseTimeShield={handleUseTimeShield}
           onEnableBot={handleEnableBot}
           onEndGame={handleEndGame}
           onOpenVictory={(code) => {
@@ -1452,6 +1977,8 @@ export function App() {
           }}
           onStartTour={() => setActiveTour('board')}
           tourPaused={isBoardTourOpen}
+          partnerReaction={roomReactions[activeRoom.code] ?? null}
+          onSendReaction={handleSendReaction}
         />
       )}
 
@@ -1460,14 +1987,38 @@ export function App() {
           key={activeRoom.code}
           room={activeRoom}
           profile={profile}
-          newlyUnlockedBadgeIds={
-            lastVictoryMeta?.roomCode === activeRoom.code
-              ? lastVictoryMeta.newlyUnlockedBadges
-              : []
+          badgeUpgrades={
+            lastVictoryMeta?.roomCode === activeRoom.code ? lastVictoryMeta.badgeUpgrades : []
           }
           earnedXp={lastVictoryMeta?.roomCode === activeRoom.code ? lastVictoryMeta.earnedXp : 80}
           earnedStars={
             lastVictoryMeta?.roomCode === activeRoom.code ? lastVictoryMeta.earnedStars : 3
+          }
+          leveledUpTo={
+            lastVictoryMeta?.roomCode === activeRoom.code ? lastVictoryMeta.leveledUpTo : null
+          }
+          levelUpBonusStars={
+            lastVictoryMeta?.roomCode === activeRoom.code ? lastVictoryMeta.levelUpBonusStars : 0
+          }
+          tempoBonusXp={
+            lastVictoryMeta?.roomCode === activeRoom.code
+              ? lastVictoryMeta.tempoBonusXp
+              : activeRoom.tempoBonusXp ?? 0
+          }
+          goldenRouteClaimed={
+            lastVictoryMeta?.roomCode === activeRoom.code
+              ? lastVictoryMeta.goldenRouteClaimed
+              : hasClaimedGoldenLetter(activeRoom)
+          }
+          duelMvpBonusStars={
+            lastVictoryMeta?.roomCode === activeRoom.code
+              ? lastVictoryMeta.duelMvpBonusStars
+              : 0
+          }
+          duoStreakDays={
+            lastVictoryMeta?.roomCode === activeRoom.code
+              ? lastVictoryMeta.duoStreakDays
+              : 0
           }
           onRematch={handleRematch}
           onBackToHub={() => setScreen('hub')}
@@ -1480,12 +2031,16 @@ export function App() {
           onBack={() => setScreen('hub')}
           onBuyOrActivateTheme={handleBuyOrActivateTheme}
           onBuyOrActivateParticle={handleBuyOrActivateParticle}
+          onBuyOrActivateTileStyle={handleBuyOrActivateTileStyle}
+          onBuyOrActivateAvatarFrame={handleBuyOrActivateAvatarFrame}
+          onBuyStreakFreeze={handleBuyStreakFreeze}
         />
       )}
 
       {showCreateSheet && (
         <CreateDuelSheet
           defaultDaily={createSheetDaily}
+          playerLevel={getLevelInfo(profile.xp).level}
           onClose={() => setShowCreateSheet(false)}
           onCreateRoom={handleCreateRoom}
           onEnterRoom={(code) => {

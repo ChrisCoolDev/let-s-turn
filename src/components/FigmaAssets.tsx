@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from '../i18n';
-import type { AvatarId } from '../types/game';
+import type { AvatarFrameId, AvatarId } from '../types/game';
 
 interface FlameProps {
   className?: string;
@@ -236,6 +236,65 @@ export const FigmaBadgeIcon: React.FC<BadgeIconProps> = ({
         </svg>
       );
 
+    case 'clutch':
+      return (
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className={className}
+          aria-hidden="true"
+        >
+          <rect x="9.5" y="1.8" width="5" height="2.2" rx="1" fill="#E5A400" />
+          <rect x="11" y="3.5" width="2" height="2" fill="#CC7800" />
+          <circle cx="12" cy="13.5" r="8.2" fill="#CC7800" />
+          <circle cx="12" cy="12.6" r="8.2" fill="#FF9600" />
+          <circle cx="12" cy="12.6" r="5.9" fill="#FFF7E0" />
+          {/* Zone critique rouge sur le cadran */}
+          <path
+            d="M12 6.7A5.9 5.9 0 0 1 17.9 12.6H12V6.7Z"
+            fill="#FF4B4B"
+            fillOpacity="0.25"
+          />
+          <path
+            d="M12 12.6V8.6M12 12.6L15.4 10.6"
+            stroke="#D33131"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <circle cx="12" cy="12.6" r="1.4" fill="#FF4B4B" />
+        </svg>
+      );
+
+    case 'miyu_tamer':
+      return (
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className={className}
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12.8" r="9.4" fill="#CC7800" />
+          <circle cx="12" cy="12" r="9.4" fill="#FF9600" />
+          <rect x="6.5" y="8" width="11" height="8.4" rx="3.2" fill="#FFFDF5" />
+          <line x1="12" y1="5.2" x2="12" y2="8" stroke="#FFFDF5" strokeWidth="1.8" strokeLinecap="round" />
+          <circle cx="12" cy="4.6" r="1.4" fill="#FFC70F" />
+          <circle cx="9.6" cy="11.6" r="1.3" fill="#1CB0F6" />
+          <circle cx="14.4" cy="11.6" r="1.3" fill="#1CB0F6" />
+          <path
+            d="M9.6 14.3C10.5 15.1 13.5 15.1 14.4 14.3"
+            stroke="#FE9A03"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+
     default:
       return <FigmaFlameIcon size={size} className={className} />;
   }
@@ -252,6 +311,8 @@ interface AvatarProps {
   empty?: boolean;
   /** Avatar dédié du bot Miyu */
   isBot?: boolean;
+  /** Cadre cosmétique débloqué dans le Vestiaire */
+  frame?: AvatarFrameId;
   className?: string;
 }
 
@@ -281,6 +342,7 @@ export const FigmaAvatar: React.FC<AvatarProps> = ({
   onlineDot = false,
   empty = false,
   isBot = false,
+  frame = 'none',
   className = '',
 }) => {
   const { t } = useI18n();
@@ -326,17 +388,53 @@ export const FigmaAvatar: React.FC<AvatarProps> = ({
   const imgSrc = isBot ? '/avatars/avatar-miyu.png' : `/avatars/avatar-${avatarId}.png`;
   const imgAlt = isBot ? 'Miyu' : AVATAR_LABELS[avatarId];
 
+  const activeFrame = !empty && !isBot && frame !== 'none' ? frame : 'none';
+  const frameRingColor =
+    activeFrame === 'crown'
+      ? '#ffc800'
+      : activeFrame === 'electric'
+      ? '#1cb0f6'
+      : activeFrame === 'flame'
+      ? '#ff9600'
+      : ringColor;
+  const frameGlow =
+    activeFrame === 'crown'
+      ? ', 0 0 12px rgba(255, 200, 0, 0.45)'
+      : activeFrame === 'electric'
+      ? ', 0 0 12px rgba(28, 176, 246, 0.45)'
+      : activeFrame === 'flame'
+      ? ', 0 0 10px rgba(255, 150, 0, 0.4)'
+      : '';
+
   return (
     <div
       className={`relative inline-flex shrink-0 items-center justify-center rounded-full ${className}`}
       style={{
         width: size,
         height: size,
-        boxShadow: ringColor
-          ? `0 0 0 ${gap}px ${ringGapColor}, 0 0 0 ${gap + ring}px ${ringColor}`
+        boxShadow: frameRingColor
+          ? `0 0 0 ${gap}px ${ringGapColor}, 0 0 0 ${gap + ring + (activeFrame !== 'none' ? 1 : 0)}px ${frameRingColor}${frameGlow}`
           : undefined,
       }}
     >
+      {activeFrame === 'crown' && (
+        <svg
+          width={Math.max(16, Math.round(size * 0.4))}
+          height={Math.max(12, Math.round(size * 0.3))}
+          viewBox="0 0 24 18"
+          fill="none"
+          className="pointer-events-none absolute -top-2.5 left-1/2 -translate-x-1/2 drop-shadow-sm"
+          aria-hidden="true"
+        >
+          <path
+            d="M3 15L1.5 5.5L7.5 9.5L12 2L16.5 9.5L22.5 5.5L21 15H3Z"
+            fill="#FFC800"
+            stroke="#CC7800"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
       <div
         className="h-full w-full overflow-hidden rounded-full"
         style={{

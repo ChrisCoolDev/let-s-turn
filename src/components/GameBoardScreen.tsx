@@ -3,36 +3,58 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
   Delete,
   Flag,
+  Flame,
   HelpCircle,
   History,
   Lightbulb,
   RotateCcw,
+  ShieldPlus,
   Star,
+  Swords,
+  ThumbsUp,
   X,
   XCircle,
 } from 'lucide-react';
 import { FigmaAvatar, FigmaFlameIcon, ShareIcon } from './FigmaAssets';
-import { getHintForWord, isOneLetterDiff, isValidWord } from '../engine/wordLadder';
+import {
+  computeDuelScores,
+  getActiveDuoStreak,
+  getComboMultiplier,
+} from '../engine/gamification';
+import {
+  getHintForWord,
+  getRoomGoldenLetter,
+  hasClaimedGoldenLetter,
+  isOneLetterDiff,
+  isValidWord,
+} from '../engine/wordLadder';
 import { isPlural, useI18n } from '../i18n';
 import {
   BOT_PROPOSAL_DELAY_MS,
   broadcastTypingState,
+  getRoomTurnTimeoutMs,
   requestNotificationPermissionOnGesture,
   resolveRoomParticipants,
-  TURN_TIMEOUT_MS,
 } from '../services/multiplayer';
 import {
   fetchWordMeaning,
   getImmediateWordMeaning,
   type WordMeaningResult,
 } from '../services/wordMeaning';
-import type { GameRoom, PlayerProfile, WordMove } from '../types/game';
+import type {
+  GameRoom,
+  PlayerProfile,
+  QuickReactionEvent,
+  QuickReactionId,
+  WordMove,
+} from '../types/game';
 
 interface GameBoardScreenProps {
   room: GameRoom;
@@ -41,11 +63,14 @@ interface GameBoardScreenProps {
   onSubmitMove: (roomCode: string, nextWord: string) => void;
   onUndoMove: (roomCode: string) => void;
   onUseHint: (roomCode: string) => boolean;
+  onUseTimeShield?: (roomCode: string) => boolean;
   onEnableBot: (roomCode: string) => void;
   onEndGame: (roomCode: string) => void;
   onOpenVictory: (roomCode: string) => void;
   onStartTour?: () => void;
   tourPaused?: boolean;
+  partnerReaction?: QuickReactionEvent | null;
+  onSendReaction?: (roomCode: string, reactionId: QuickReactionId) => void;
 }
 
 const QWERTY_ROWS = [
@@ -67,11 +92,14 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   onSubmitMove,
   onUndoMove,
   onUseHint,
+  onUseTimeShield,
   onEnableBot,
   onEndGame,
   onOpenVictory,
   onStartTour,
   tourPaused = false,
+  partnerReaction = null,
+  onSendReaction,
 }) => {
   const { locale, t } = useI18n();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -92,8 +120,10 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
   const [now, setNow] = useState<number>(() => Date.now());
+  const [sentReactionId, setSentReactionId] = useState<QuickReactionId | null>(null);
 
   const toastTimerRef = useRef<number | null>(null);
+  const reactionCooldownRef = useRef<number>(0);
   const seenTurnPassIdRef = useRef<string | null>(null);
 
   const {
@@ -109,11 +139,47 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     !waitingForPartner &&
     partner.playerId !== profile.playerId &&
     partner.playerId !== me.playerId;
+  const turnTimeoutMs = getRoomTurnTimeoutMs(room);
   const remainingSeconds = hasTurnCountdown
-    ? Math.max(0, Math.ceil(((room.turnStartedAt ?? room.startedAt) + TURN_TIMEOUT_MS - now) / 1000))
+    ? Math.max(0, Math.ceil(((room.turnStartedAt ?? room.startedAt) + turnTimeoutMs - now) / 1000))
     : 0;
   const showPartnerCountdown = hasTurnCountdown && !isMyTurn && (isBot || remainingSeconds <= 20);
   const isLowTime = hasTurnCountdown && remainingSeconds <= 10;
+
+  const goldenLetter = getRoomGoldenLetter(room);
+  const goldenClaimed = hasClaimedGoldenLetter(room);
+  const tempoCombo = room.tempoCombo ?? 0;
+  const comboMult = getComboMultiplier(tempoCombo);
+  const prevGoldenClaimedRef = useRef(goldenClaimed);
+  const prevTempoComboRef = useRef(tempoCombo);
+
+  const duoStreak = !waitingForPartner ? getActiveDuoStreak(profile, partner.playerId) : 0;
+  const duelScores = useMemo(
+    () => (room.mode === 'duel' ? computeDuelScores(room, me.playerId) : null),
+    [
+      room.mode,
+      room.moves,
+      room.targetWord,
+      room.language,
+      room.startedAt,
+      room.hostPlayer,
+      room.partnerPlayer,
+      room.winnerPlayerId,
+      me.playerId,
+    ]
+  );
+
+  const handleQuickReaction = (reactionId: QuickReactionId) => {
+    if (!onSendReaction) return;
+    const ts = Date.now();
+    if (ts - reactionCooldownRef.current < 1500) return;
+    reactionCooldownRef.current = ts;
+    setSentReactionId(reactionId);
+    onSendReaction(room.code, reactionId);
+    window.setTimeout(() => {
+      setSentReactionId((cur) => (cur === reactionId ? null : cur));
+    }, 1500);
+  };
 
   useEffect(() => {
     if (!waitingForPartner || room.status !== 'active' || botProposalDismissed || tourPaused) {
@@ -195,6 +261,23 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   useEffect(() => {
     broadcastTypingState(room.code, profile.playerId, selectedIndex !== null || draftLetter !== null);
   }, [selectedIndex, draftLetter, room.code, profile.playerId]);
+
+  // Celebratory toast when Golden Route or Tempo Combo milestone is hit
+  useEffect(() => {
+    const goldenJustClaimed = goldenClaimed && !prevGoldenClaimedRef.current;
+    prevGoldenClaimedRef.current = goldenClaimed;
+
+    const comboLeveledUp =
+      tempoCombo > prevTempoComboRef.current &&
+      (tempoCombo === 2 || tempoCombo === 3 || tempoCombo === 5);
+    prevTempoComboRef.current = tempoCombo;
+
+    if (goldenJustClaimed) {
+      showToast(t('board.toastGoldenClaimed'), 'hint', 3000);
+    } else if (comboLeveledUp) {
+      showToast(t('board.toastCombo', { mult: comboMult }), 'info', 2200);
+    }
+  }, [goldenClaimed, tempoCombo, comboMult, showToast, t]);
 
   const displayLetters = useMemo(() => {
     const chars = room.currentWord.split('');
@@ -466,6 +549,22 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
     showToast(t('board.toastHintBfs', { remaining: remainingLabel }), 'hint', 3500);
   };
 
+  const handleShieldClick = () => {
+    if (!onUseTimeShield || room.status !== 'active' || !canPlayManually || !hasTurnCountdown) {
+      return;
+    }
+    if (remainingSeconds > 12) {
+      showToast(t('board.toastShieldWait'), 'info');
+      return;
+    }
+    const ok = onUseTimeShield(room.code);
+    if (!ok) {
+      showToast(t('board.toastNoStars'), 'error');
+      return;
+    }
+    showToast(t('board.toastShieldUsed'), 'hint', 3000);
+  };
+
   const handleInviteCopy = async () => {
     void requestNotificationPermissionOnGesture();
     const url = `${window.location.origin}/join/${room.code}`;
@@ -580,12 +679,46 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               isBot={isBot}
             />
             <div className="min-w-0 leading-tight">
-              <p
-                className="truncate text-[17px] font-black"
-                style={{ color: waitingForPartner ? 'var(--text-muted)' : 'var(--text-primary)' }}
-              >
-                {waitingForPartner ? t('common.waiting') : partner.name}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p
+                  className="truncate text-[17px] font-black"
+                  style={{ color: waitingForPartner ? 'var(--text-muted)' : 'var(--text-primary)' }}
+                >
+                  {waitingForPartner ? t('common.waiting') : partner.name}
+                </p>
+                {isBot && room.botDifficulty && room.botDifficulty !== 'apprentice' && (
+                  <span
+                    className="inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide"
+                    style={{
+                      backgroundColor: 'var(--duo-blue-bg)',
+                      color: 'var(--duo-blue-text)',
+                    }}
+                  >
+                    {t(`bot.${room.botDifficulty}.title`)}
+                  </span>
+                )}
+                {duoStreak > 0 && (
+                  <span
+                    className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-black"
+                    style={{
+                      backgroundColor: 'var(--duo-orange-bg)',
+                      color: 'var(--duo-orange-shadow)',
+                    }}
+                  >
+                    <FigmaFlameIcon size={11} />
+                    {duoStreak}
+                    {t('common.streakUnit')}
+                  </span>
+                )}
+                {partnerReaction && partnerReaction.roomCode === room.code && (
+                  <span
+                    key={partnerReaction.id}
+                    className="animate-pop-in inline-flex shrink-0 items-center rounded-full border border-[var(--duo-blue)] bg-[var(--duo-blue-bg)] px-2 py-0.5 text-[11px] font-black text-[var(--duo-blue-text)]"
+                  >
+                    {t(`board.reaction.${partnerReaction.reactionId}` as Parameters<typeof t>[0])}
+                  </span>
+                )}
+              </div>
               {room.status === 'completed' ? (
                 <button
                   type="button"
@@ -674,6 +807,35 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           </div>
         </div>
 
+        {/* Barre de scores en direct (Mode Duel) */}
+        {duelScores && (
+          <div className="flex items-center justify-between gap-2 rounded-2xl border-2 border-[var(--border-tile)] bg-[var(--bg-muted)] px-3 py-1.5 text-xs font-black">
+            <span
+              className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 tabular-nums ${
+                duelScores.isMeWinning
+                  ? 'bg-[var(--duo-green-bg)] text-[var(--duo-green-text)]'
+                  : 'text-[var(--text-primary)]'
+              }`}
+            >
+              {t('common.you')} · {t('board.ptsUnit', { pts: duelScores.myScore })}
+            </span>
+            <span className="inline-flex items-center gap-1 text-[var(--duo-orange-shadow)]">
+              <Swords className="h-3.5 w-3.5" />
+              {duelScores.isTie ? t('board.duelTie') : t('board.duelLead')}
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 tabular-nums ${
+                duelScores.isOpponentWinning
+                  ? 'bg-[var(--duo-blue-bg)] text-[var(--duo-blue-text)]'
+                  : 'text-[var(--text-primary)]'
+              }`}
+            >
+              {waitingForPartner ? t('common.partner') : partner.name} ·{' '}
+              {t('board.ptsUnit', { pts: duelScores.opponentScore })}
+            </span>
+          </div>
+        )}
+
         {/* Proposition du bot Miyu après 20s sans partenaire */}
         {waitingForPartner && showBotProposal && !botProposalDismissed && room.status === 'active' && (
           <div className="duo-card animate-pop-in flex items-center justify-between gap-2.5 px-3.5 py-2.5">
@@ -723,6 +885,60 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
           Let&apos;s turn <span className="font-black">{room.startWord}</span> to{' '}
           <span className="font-black text-[var(--duo-green)]">{room.targetWord}</span>
         </h1>
+
+        {/* Pilules compactes : Lettre Dorée & Tempo Combo */}
+        {(goldenLetter || tempoCombo >= 2) && (
+          <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1.5">
+            {goldenLetter && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-black"
+                style={
+                  goldenClaimed
+                    ? {
+                        borderColor: 'var(--duo-green)',
+                        backgroundColor: 'var(--duo-green-bg)',
+                        color: 'var(--duo-green-text)',
+                      }
+                    : {
+                        borderColor: 'var(--duo-gold)',
+                        backgroundColor: 'var(--duo-gold-bg)',
+                        color: 'var(--duo-gold-text)',
+                      }
+                }
+              >
+                {goldenClaimed ? (
+                  <>
+                    <Check className="h-3 w-3 stroke-[3]" />
+                    <span>{t('board.goldenLetterDone')}</span>
+                    <span className="inline-flex items-center gap-0.5">
+                      +1 <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                    <span>{t('board.goldenLetterLabel', { letter: goldenLetter })}</span>
+                    <span className="opacity-80">· +1</span>
+                    <Star className="h-2.5 w-2.5 fill-[#ffc800] text-[#e5a400]" />
+                  </>
+                )}
+              </span>
+            )}
+            {tempoCombo >= 2 && (
+              <span
+                className="animate-pop-in inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-black"
+                style={{
+                  borderColor: 'var(--duo-orange)',
+                  backgroundColor: 'var(--duo-orange-bg)',
+                  color: 'var(--duo-orange-shadow)',
+                }}
+              >
+                <FigmaFlameIcon size={13} />
+                <span>{t('board.comboBadge', { mult: comboMult })}</span>
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Toast discret pour erreurs / indices / notifications */}
         <div className="mt-2.5 flex min-h-8 items-center justify-center">
@@ -799,6 +1015,8 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                     ? 'duo-tile-hint'
                     : isSelected
                     ? 'duo-tile-selected'
+                    : tempoCombo >= 2 && room.status === 'active'
+                    ? 'duo-tile-combo'
                     : ''
                 } ${isFlipped ? 'animate-flip-tile' : ''}`}
                 style={{ color: letterColor }}
@@ -961,24 +1179,57 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         )}
       </main>
 
-      {/* BAS DU PLATEAU : Actions Aide (Indice + Undo) + Clavier AZERTY/QWERTY + Valider */}
+      {/* BAS DU PLATEAU : Réactions + Aide (Indice + Undo) + Clavier AZERTY/QWERTY + Valider */}
       <footer className="space-y-2.5">
+        {!waitingForPartner && room.status === 'active' && onSendReaction && (
+          <div className="flex items-center justify-center gap-1.5">
+            {(
+              [
+                { id: 'nice' as const, Icon: ThumbsUp, color: 'var(--duo-green-text)' },
+                { id: 'hurry' as const, Icon: Clock, color: 'var(--duo-orange)' },
+                { id: 'tough' as const, Icon: Flame, color: 'var(--duo-red-text)' },
+                { id: 'idea' as const, Icon: Lightbulb, color: 'var(--duo-blue-text)' },
+              ] as const
+            ).map(({ id, Icon, color }) => {
+              const label = t(`board.reaction.${id}` as Parameters<typeof t>[0]);
+              const isSent = sentReactionId === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => handleQuickReaction(id)}
+                  aria-label={t('board.reactAria', { label })}
+                  className="inline-flex items-center gap-1 rounded-full border border-[var(--border-tile)] bg-[var(--bg-surface)] px-2.5 py-1 text-[11px] font-black transition active:scale-95"
+                  style={{
+                    borderColor: isSent ? 'var(--duo-blue)' : undefined,
+                    backgroundColor: isSent ? 'var(--duo-blue-bg)' : undefined,
+                    color: isSent ? 'var(--duo-blue-text)' : 'var(--text-muted)',
+                  }}
+                >
+                  <Icon className="h-3 w-3 shrink-0" style={{ color: isSent ? undefined : color }} />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Barre d'aide & switch clavier */}
-        <div data-tour="board-tools" className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        <div data-tour="board-tools" className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={handleHintClick}
               disabled={!canPlayManually || room.status === 'completed'}
-              className={`duo-btn flex items-center gap-1.5 px-3.5 py-2.5 text-sm ${
+              className={`duo-btn flex items-center gap-1 px-2.5 py-2 text-xs sm:gap-1.5 sm:px-3.5 sm:py-2.5 sm:text-sm ${
                 !canPlayManually || room.status === 'completed'
                   ? 'duo-btn-disabled'
                   : 'duo-btn-white'
               }`}
             >
-              <Lightbulb className="h-4 w-4 text-[#ffc800]" />
+              <Lightbulb className="h-3.5 w-3.5 text-[#ffc800] sm:h-4 sm:w-4" />
               {t('board.hintButton')}
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-xs font-black text-[var(--duo-gold-text)]">
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-[11px] font-black text-[var(--duo-gold-text)] sm:text-xs">
                 1 <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
               </span>
             </button>
@@ -987,22 +1238,50 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
               type="button"
               onClick={() => onUndoMove(room.code)}
               disabled={room.moves.length === 0 || room.status === 'completed'}
-              className={`duo-btn flex items-center gap-1.5 px-3.5 py-2.5 text-sm ${
+              className={`duo-btn flex items-center gap-1 px-2.5 py-2 text-xs sm:gap-1.5 sm:px-3.5 sm:py-2.5 sm:text-sm ${
                 room.moves.length === 0 || room.status === 'completed'
                   ? 'duo-btn-disabled'
                   : 'duo-btn-white'
               }`}
               title={t('board.undoTooltip')}
             >
-              <RotateCcw className="h-4 w-4 text-[var(--duo-orange)]" />
+              <RotateCcw className="h-3.5 w-3.5 text-[var(--duo-orange)] sm:h-4 sm:w-4" />
               {t('board.undoButton')}
             </button>
+
+            {onUseTimeShield && hasTurnCountdown && (
+              <button
+                type="button"
+                onClick={handleShieldClick}
+                disabled={!canPlayManually || room.status === 'completed'}
+                title={t('board.shieldTooltip')}
+                className={`duo-btn flex items-center gap-1 px-2.5 py-2 text-xs sm:gap-1.5 sm:px-3 sm:py-2.5 sm:text-sm ${
+                  !canPlayManually || room.status === 'completed'
+                    ? 'duo-btn-disabled'
+                    : 'duo-btn-white'
+                }`}
+                style={
+                  canPlayManually && room.status === 'active' && remainingSeconds <= 12
+                    ? {
+                        borderColor: 'var(--duo-blue)',
+                        backgroundColor: 'var(--duo-blue-bg)',
+                      }
+                    : undefined
+                }
+              >
+                <ShieldPlus className="h-3.5 w-3.5 text-[var(--duo-blue)] sm:h-4 sm:w-4" />
+                <span>{t('board.shieldButton')}</span>
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--duo-gold-bg)] px-1.5 py-0.5 text-[11px] font-black text-[var(--duo-gold-text)] sm:text-xs">
+                  1 <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                </span>
+              </button>
+            )}
           </div>
 
           <button
             type="button"
             onClick={() => setKeyboardLayout((l) => (l === 'AZERTY' ? 'QWERTY' : 'AZERTY'))}
-            className="rounded-xl border-2 border-[var(--border-tile)] px-3 py-2 text-[13px] font-black text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="shrink-0 rounded-xl border-2 border-[var(--border-tile)] px-2.5 py-2 text-xs font-black text-[var(--text-muted)] hover:text-[var(--text-primary)] sm:px-3 sm:text-[13px]"
           >
             {keyboardLayout}
           </button>
@@ -1023,6 +1302,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                   selectedIndex !== null && displayLetters[selectedIndex] === key && hasDraftChange;
                 const matchesTargetAtSelected =
                   hintChar === key && hintIndex === selectedIndex;
+                const isGoldenKey = !goldenClaimed && goldenLetter === key;
 
                 return (
                   <button
@@ -1030,15 +1310,20 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
                     type="button"
                     disabled={!canPlayManually || room.status === 'completed'}
                     onClick={() => handleKeyPress(key)}
-                    className={`duo-key flex h-12 flex-1 items-center justify-center text-base font-black ${
+                    className={`duo-key relative flex h-12 flex-1 items-center justify-center text-base font-black ${
                       isActiveChar
                         ? '!border-[var(--duo-blue-shadow)] !bg-[var(--duo-blue)] !text-white'
                         : matchesTargetAtSelected
                         ? '!border-[var(--duo-gold)] !bg-[var(--duo-gold-bg)] !text-[var(--duo-gold-text)]'
+                        : isGoldenKey
+                        ? 'duo-key-golden'
                         : ''
                     }`}
                   >
                     {key}
+                    {isGoldenKey && !isActiveChar && (
+                      <Star className="pointer-events-none absolute right-0.5 top-0.5 h-2.5 w-2.5 fill-[#ffc800] text-[#e5a400]" />
+                    )}
                   </button>
                 );
               })}

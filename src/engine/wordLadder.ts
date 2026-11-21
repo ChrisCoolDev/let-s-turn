@@ -9,7 +9,7 @@ import {
   FR_5_LIST,
   FR_5_SET,
 } from './dictionaries';
-import type { GameMode, Language, WordLength } from '../types/game';
+import type { GameMode, GameRoom, Language, WordLength } from '../types/game';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -632,4 +632,146 @@ export function generateWordPair(
     optimalPath: fallbackPath,
     optimalPar: Math.max(4, fallbackPath.length - 1),
   };
+}
+
+const GOLDEN_LETTER_PRIORITY = 'KVWBGPYFHCMDUOALRNSTIEZXJQ';
+
+function hashStringDeterministic(input: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function pickGoldenLetter(
+  startWord: string,
+  targetWord: string,
+  optimalPath: string[],
+  language: Language
+): string | null {
+  const start = startWord.trim().toUpperCase();
+  const target = targetWord.trim().toUpperCase();
+  const excluded = new Set<string>([...start.split(''), ...target.split('')]);
+  const candidates = new Set<string>();
+
+  const path =
+    optimalPath && optimalPath.length >= 2
+      ? optimalPath
+      : findShortestPath(start, target, language) ?? [start, target];
+
+  for (const w of path.slice(1, -1)) {
+    for (const ch of w.trim().toUpperCase()) {
+      if (ch >= 'A' && ch <= 'Z' && !excluded.has(ch)) {
+        candidates.add(ch);
+      }
+    }
+  }
+
+  for (const baseWord of path.slice(0, -1)) {
+    const neighbors = findValidNeighbors(baseWord, language);
+    for (const neighbor of neighbors) {
+      if (neighbor === start || neighbor === target) continue;
+      if (findValidNeighbors(neighbor, language).length < 2) continue;
+      for (const ch of neighbor) {
+        if (ch >= 'A' && ch <= 'Z' && !excluded.has(ch)) {
+          candidates.add(ch);
+        }
+      }
+    }
+  }
+
+  if (candidates.size === 0) return null;
+
+  const sorted = Array.from(candidates).sort((a, b) => {
+    const idxA = GOLDEN_LETTER_PRIORITY.indexOf(a);
+    const idxB = GOLDEN_LETTER_PRIORITY.indexOf(b);
+    return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+  });
+
+  const topPool = sorted.slice(0, 3);
+  const seed = hashStringDeterministic(`${language}:${start}:${target}`);
+  return topPool[seed % topPool.length];
+}
+
+export function getRoomGoldenLetter(
+  room: Pick<GameRoom, 'startWord' | 'targetWord' | 'optimalPath' | 'language' | 'goldenLetter'>
+): string | null {
+  if (room.goldenLetter && /^[A-Z]$/.test(room.goldenLetter)) {
+    return room.goldenLetter;
+  }
+  return pickGoldenLetter(room.startWord, room.targetWord, room.optimalPath, room.language);
+}
+
+export function hasClaimedGoldenLetter(
+  room: Pick<
+    GameRoom,
+    'moves' | 'goldenLetter' | 'goldenLetterClaimed' | 'startWord' | 'targetWord' | 'optimalPath' | 'language'
+  >
+): boolean {
+  if (room.goldenLetterClaimed) return true;
+  const letter = getRoomGoldenLetter(room);
+  if (!letter) return false;
+  return room.moves.some((m) => !m.isUndoPenalty && m.word.includes(letter));
+}
+
+const remainingStepsCache = new Map<string, number | null>();
+
+export function getRemainingBfsSteps(
+  word: string,
+  targetWord: string,
+  lang: Language
+): number | null {
+  const start = word.trim().toUpperCase();
+  const target = targetWord.trim().toUpperCase();
+  if (start === target) return 0;
+  const cacheKey = `${lang}:${start}:${target}`;
+  if (remainingStepsCache.has(cacheKey)) {
+    return remainingStepsCache.get(cacheKey) ?? null;
+  }
+  const path = findShortestPath(start, target, lang);
+  const steps = path ? Math.max(0, path.length - 1) : null;
+  if (remainingStepsCache.size > 2000) {
+    remainingStepsCache.clear();
+  }
+  remainingStepsCache.set(cacheKey, steps);
+  return steps;
+}
+
+let cachedTotalDictionaryWords: number | null = null;
+
+export function getTotalDictionaryWordCount(): number {
+  if (cachedTotalDictionaryWords !== null) return cachedTotalDictionaryWords;
+  cachedTotalDictionaryWords = new Set<string>([
+    ...EN_4_SET,
+    ...EN_5_SET,
+    ...FR_4_SET,
+    ...FR_5_SET,
+  ]).size;
+  return cachedTotalDictionaryWords;
+}
+
+const LETTER_RARITY_WEIGHTS: Record<string, number> = {
+  Z: 10,
+  Q: 9,
+  X: 9,
+  J: 8,
+  K: 8,
+  W: 7,
+  Y: 6,
+  H: 4,
+  F: 4,
+  V: 4,
+  B: 3,
+  G: 3,
+  P: 3,
+};
+
+export function computeWordRarityScore(word: string): number {
+  let score = word.length >= 5 ? 4 : 0;
+  for (const ch of word.trim().toUpperCase()) {
+    score += LETTER_RARITY_WEIGHTS[ch] ?? 1;
+  }
+  return score;
 }

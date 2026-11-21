@@ -6,8 +6,10 @@ import type {
   GameMode,
   GameRoom,
   Language,
+  NudgeEvent,
   PlayerPresence,
   PlayerProfile,
+  QuickReactionEvent,
   ThemeId,
   WordLength,
   WordMove,
@@ -310,6 +312,14 @@ export function hydrateLocalProfileFromRemote(
     longestWordSolved: 4,
     uniqueWordsUsed: [],
     unlockedBadges: Array.isArray(remote.unlocked_badges) ? remote.unlocked_badges : [],
+    badgeTiers: {},
+    bestStreak: remote.streak ?? 0,
+    fastWins: 0,
+    fiveLetterWins: 0,
+    clutchMoves: 0,
+    miyuWins: 0,
+    streakFreezes: 0,
+    lastFreezeUsedDate: null,
     unlockedThemes:
       Array.isArray(remote.unlocked_themes) && remote.unlocked_themes.length > 0
         ? remote.unlocked_themes
@@ -764,6 +774,8 @@ export async function pushRemoteMove(room: GameRoom, move: WordMove): Promise<vo
 let realtimeChannel: RealtimeChannel | null = null;
 const roomListeners = new Set<(room: GameRoom, meta?: RoomUpdateMeta) => void>();
 const typingListeners = new Set<(roomCode: string, playerId: string, isTyping: boolean) => void>();
+const reactionListeners = new Set<(event: QuickReactionEvent) => void>();
+const nudgeListeners = new Set<(event: NudgeEvent) => void>();
 let boundPlayerId: string | null = null;
 
 function ensureRealtimeSubscription(playerId: string): void {
@@ -800,6 +812,17 @@ function ensureRealtimeSubscription(playerId: string): void {
         | undefined;
       if (!data?.roomCode || !data.playerId) return;
       typingListeners.forEach((cb) => cb(data.roomCode!, data.playerId!, Boolean(data.isTyping)));
+    })
+    .on('broadcast', { event: 'quick_reaction' }, ({ payload }) => {
+      const ev = payload as QuickReactionEvent | undefined;
+      if (!ev?.roomCode || !ev.playerId || !ev.reactionId) return;
+      reactionListeners.forEach((cb) => cb(ev));
+    })
+    .on('broadcast', { event: 'room_nudge' }, ({ payload }) => {
+      const ev = payload as NudgeEvent | undefined;
+      if (!ev?.roomCode || !ev.fromPlayerId || !ev.toPlayerId) return;
+      if (ev.toPlayerId !== playerId) return;
+      nudgeListeners.forEach((cb) => cb(ev));
     })
     .on(
       'postgres_changes',
@@ -856,21 +879,51 @@ export function broadcastSupabaseTyping(
   });
 }
 
+export function broadcastSupabaseReaction(event: QuickReactionEvent): void {
+  if (event.roomCode === STARTER_ROOM_CODE || !realtimeChannel) return;
+  void realtimeChannel.send({
+    type: 'broadcast',
+    event: 'quick_reaction',
+    payload: event,
+  });
+}
+
+export function broadcastSupabaseNudge(event: NudgeEvent): void {
+  if (event.roomCode === STARTER_ROOM_CODE || !realtimeChannel) return;
+  void realtimeChannel.send({
+    type: 'broadcast',
+    event: 'room_nudge',
+    payload: event,
+  });
+}
+
 export function subscribeSupabaseSync(
   playerId: string,
   onRoomUpdate: (room: GameRoom, meta?: RoomUpdateMeta) => void,
-  onTypingChange?: (roomCode: string, playerId: string, isTyping: boolean) => void
+  onTypingChange?: (roomCode: string, playerId: string, isTyping: boolean) => void,
+  onReaction?: (event: QuickReactionEvent) => void,
+  onNudge?: (event: NudgeEvent) => void
 ): () => void {
   if (!getSupabaseClient() || !isValidUuid(playerId)) return () => {};
 
   roomListeners.add(onRoomUpdate);
   if (onTypingChange) typingListeners.add(onTypingChange);
+  if (onReaction) reactionListeners.add(onReaction);
+  if (onNudge) nudgeListeners.add(onNudge);
   ensureRealtimeSubscription(playerId);
 
   return () => {
     roomListeners.delete(onRoomUpdate);
     if (onTypingChange) typingListeners.delete(onTypingChange);
-    if (roomListeners.size === 0 && typingListeners.size === 0 && realtimeChannel) {
+    if (onReaction) reactionListeners.delete(onReaction);
+    if (onNudge) nudgeListeners.delete(onNudge);
+    if (
+      roomListeners.size === 0 &&
+      typingListeners.size === 0 &&
+      reactionListeners.size === 0 &&
+      nudgeListeners.size === 0 &&
+      realtimeChannel
+    ) {
       const client = getSupabaseClient();
       if (client) void client.removeChannel(realtimeChannel);
       realtimeChannel = null;

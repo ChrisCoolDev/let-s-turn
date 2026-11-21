@@ -1,11 +1,20 @@
 import {
+  generateDailyQuestsForDate,
+  getBotDifficultyConfig,
+  getLocalDateString,
+  normalizeProfile,
+} from '../engine/gamification';
+import {
   findShortestPath,
   findShortestPathExcluding,
   findValidNeighbors,
   generateWordPair,
   isOneLetterDiff,
+  pickGoldenLetter,
 } from '../engine/wordLadder';
 import {
+  broadcastSupabaseNudge,
+  broadcastSupabaseReaction,
   broadcastSupabaseRoomUpdate,
   broadcastSupabaseTyping,
   CAROLE_PARTNER_ID,
@@ -31,11 +40,14 @@ import {
 } from './supabaseClient';
 import type {
   AvatarId,
+  BotDifficulty,
   GameMode,
   GameRoom,
   Language,
+  NudgeEvent,
   PlayerPresence,
   PlayerProfile,
+  QuickReactionEvent,
   WordLength,
   WordMove,
 } from '../types/game';
@@ -49,6 +61,15 @@ const CLEAN_SEED_STATS_MIGRATION_KEY = 'lets_turn_clean_seed_v1';
 export const TURN_TIMEOUT_MS = 30_000;
 export const BOT_PROPOSAL_DELAY_MS = 20_000;
 
+export function getRoomTurnTimeoutMs(
+  room: Pick<GameRoom, 'autoPartnerEnabled' | 'partnerPlayer' | 'botDifficulty'>
+): number {
+  if (room.autoPartnerEnabled || isBotPartner(room.partnerPlayer?.playerId)) {
+    return getBotDifficultyConfig(room.botDifficulty).turnTimeoutMs;
+  }
+  return TURN_TIMEOUT_MS;
+}
+
 export function passTurnIfExpired(
   room: GameRoom,
   now = Date.now(),
@@ -60,7 +81,8 @@ export function passTurnIfExpired(
   }
   if (room.hostPlayer.playerId === room.partnerPlayer.playerId) return null;
   const turnStart = room.turnStartedAt ?? room.startedAt;
-  if (now - turnStart < TURN_TIMEOUT_MS + graceMs) return null;
+  const limitMs = getRoomTurnTimeoutMs(room);
+  if (now - turnStart < limitMs + graceMs) return null;
 
   const isHostTurn = room.hostPlayer.playerId === room.currentTurnPlayerId;
   const timedOutPlayer = isHostTurn ? room.hostPlayer : room.partnerPlayer;
@@ -71,6 +93,7 @@ export function passTurnIfExpired(
     ...room,
     currentTurnPlayerId: nextPlayer.playerId,
     turnStartedAt: now,
+    tempoCombo: 0,
     hostPlayer: { ...room.hostPlayer, isTyping: false },
     partnerPlayer: { ...room.partnerPlayer, isTyping: false },
     lastTurnPass: {
@@ -136,9 +159,11 @@ export function loadProfile(): PlayerProfile | null {
     }
 
     if (dirty) {
-      saveProfile(parsed);
+      const normalized = normalizeProfile(parsed);
+      saveProfile(normalized);
+      return normalized;
     }
-    return parsed;
+    return normalizeProfile(parsed);
   } catch {
     return null;
   }
@@ -150,6 +175,7 @@ export function createInitialProfile(
   color: string,
   explicitPlayerId?: string
 ): PlayerProfile {
+  const todayStr = getLocalDateString();
   const profile: PlayerProfile = {
     playerId: explicitPlayerId || generateUuid(),
     name: name.trim() || 'Alex',
@@ -167,8 +193,23 @@ export function createInitialProfile(
     longestWordSolved: 4,
     uniqueWordsUsed: [],
     unlockedBadges: [],
+    badgeTiers: {},
+    bestStreak: 0,
+    fastWins: 0,
+    fiveLetterWins: 0,
+    clutchMoves: 0,
+    miyuWins: 0,
+    streakFreezes: 0,
+    lastFreezeUsedDate: null,
+    dailyQuests: generateDailyQuestsForDate(todayStr),
+    duoStreaks: {},
+    duelWins: 0,
     unlockedThemes: ['classic'],
     activeTheme: 'classic',
+    unlockedTileStyles: ['classic'],
+    activeTileStyle: 'classic',
+    unlockedFrames: ['none'],
+    activeFrame: 'none',
     unlockedAvatars: [0, 1, 2, 3, 4, 5],
     unlockedParticles: ['confetti'],
     activeParticle: 'confetti',
@@ -301,7 +342,7 @@ export async function bootstrapSupabaseState(
   if (!localProfile) {
     const remoteProfile = await fetchProfileRemote(uid);
     if (!remoteProfile) return { profile: null, rooms: localRooms };
-    const hydrated = hydrateLocalProfileFromRemote(remoteProfile);
+    const hydrated = normalizeProfile(hydrateLocalProfileFromRemote(remoteProfile));
     localStorage.setItem(PROFILE_KEY, JSON.stringify(hydrated));
     const baseRooms = loadRooms(hydrated);
     const remoteRooms = await loadRemoteRooms(uid, baseRooms);
@@ -310,7 +351,7 @@ export async function bootstrapSupabaseState(
     return { profile: hydrated, rooms: merged };
   }
 
-  const migrated = migrateLocalPlayerId(localProfile, localRooms, uid);
+  const migrated = migrateLocalPlayerId(normalizeProfile(localProfile), localRooms, uid);
   await upsertProfileRemote(migrated.profile);
 
   const remoteRooms = await loadRemoteRooms(uid, migrated.rooms);
@@ -419,6 +460,11 @@ export function createFigmaStarterRoom(host: PlayerProfile): GameRoom {
     autoPartnerEnabled: true,
     status: 'active',
     startedAt: Date.now() - 120 * 1000,
+    goldenLetter: pickGoldenLetter('WINE', 'SLIM', optimalPath, 'EN') ?? undefined,
+    goldenLetterClaimed: false,
+    tempoCombo: 0,
+    maxTempoCombo: 0,
+    tempoBonusXp: 0,
   };
 }
 
@@ -475,7 +521,7 @@ export function loadRooms(profile: PlayerProfile): Record<string, GameRoom> {
         if (nextRoom.currentTurnPlayerId !== profile.playerId) {
           const passed = passTurnIfExpired(nextRoom, now);
           if (passed) nextRoom = passed;
-        } else if (now - baseTurnStart >= TURN_TIMEOUT_MS) {
+        } else if (now - baseTurnStart >= getRoomTurnTimeoutMs(nextRoom)) {
           nextRoom = { ...nextRoom, turnStartedAt: now };
         }
       }
@@ -540,7 +586,8 @@ export function createNewRoom(
   wordLength: WordLength,
   mode: GameMode,
   avoidStartWord?: string,
-  existingCodes?: Iterable<string>
+  existingCodes?: Iterable<string>,
+  options?: { botDifficulty?: BotDifficulty }
 ): GameRoom {
   const pair = generateWordPair(language, wordLength, mode, avoidStartWord);
   const taken = new Set(
@@ -573,7 +620,10 @@ export function createNewRoom(
     lastSeen: Date.now(),
   };
 
-  const partnerPresence: PlayerPresence = createWaitingPartnerPresence();
+  const withBot = Boolean(options?.botDifficulty);
+  const partnerPresence: PlayerPresence = withBot
+    ? createMiyuPresence()
+    : createWaitingPartnerPresence();
 
   return {
     code,
@@ -592,9 +642,16 @@ export function createNewRoom(
     turnStartedAt: Date.now(),
     hostPlayer: hostPresence,
     partnerPlayer: partnerPresence,
-    autoPartnerEnabled: false,
+    autoPartnerEnabled: withBot,
+    botDifficulty: withBot ? options?.botDifficulty : undefined,
     status: 'active',
     startedAt: Date.now(),
+    goldenLetter:
+      pickGoldenLetter(pair.startWord, pair.targetWord, pair.optimalPath, language) ?? undefined,
+    goldenLetterClaimed: false,
+    tempoCombo: 0,
+    maxTempoCombo: 0,
+    tempoBonusXp: 0,
   };
 }
 
@@ -764,35 +821,65 @@ export function planBotTurnBehavior(
 ): BotTurnPlan {
   const path = findShortestPath(room.currentWord, room.targetWord, room.language);
   const remainingSteps = path ? Math.max(0, path.length - 1) : 5;
+  const difficulty = room.botDifficulty ?? 'apprentice';
+  const turnLimit = getBotDifficultyConfig(difficulty).turnTimeoutMs;
 
-  let timeoutChance = room.wordLength === 5 ? 0.36 : 0.26;
-  if (remainingSteps <= 1) {
-    timeoutChance -= 0.1;
-  } else if (remainingSteps >= 4) {
-    timeoutChance += 0.08;
+  let timeoutChance: number;
+  if (difficulty === 'grandmaster') {
+    timeoutChance = 0.03;
+  } else if (difficulty === 'scholar') {
+    timeoutChance = room.wordLength === 5 ? 0.14 : 0.08;
+  } else {
+    timeoutChance = room.wordLength === 5 ? 0.36 : 0.26;
+    if (remainingSteps <= 1) {
+      timeoutChance -= 0.1;
+    } else if (remainingSteps >= 4) {
+      timeoutChance += 0.08;
+    }
+    if (room.lastTurnPass && isBotPartner(room.lastTurnPass.toPlayerId)) {
+      timeoutChance += 0.12;
+    }
+    timeoutChance = Math.min(0.55, Math.max(0.15, timeoutChance));
   }
-  if (room.lastTurnPass && isBotPartner(room.lastTurnPass.toPlayerId)) {
-    timeoutChance += 0.12;
-  }
-  timeoutChance = Math.min(0.55, Math.max(0.15, timeoutChance));
 
   const willTimeout = rng() < timeoutChance;
   if (willTimeout) {
-    const s1 = Math.round(1500 + rng() * 1500);
-    const e1 = s1 + Math.round(2500 + rng() * 1700);
-    const s2 = Math.round(10500 + rng() * 3000);
-    const e2 = s2 + Math.round(3000 + rng() * 1800);
-    const s3 = Math.round(20500 + rng() * 2500);
-    const e3 = Math.min(27800, s3 + Math.round(2800 + rng() * 1400));
+    const scale = turnLimit / 30_000;
+    const s1 = Math.round((1500 + rng() * 1500) * scale);
+    const e1 = s1 + Math.round((2500 + rng() * 1700) * scale);
+    const s2 = Math.round((10500 + rng() * 3000) * scale);
+    const e2 = s2 + Math.round((3000 + rng() * 1800) * scale);
+    const s3 = Math.round((20500 + rng() * 2500) * scale);
+    const e3 = Math.min(turnLimit - 1200, s3 + Math.round((2800 + rng() * 1400) * scale));
 
     return {
       willTimeout: true,
-      thinkMs: TURN_TIMEOUT_MS + 5_000,
+      thinkMs: turnLimit + 5_000,
       typingPulses: [
         { startMs: s1, endMs: e1 },
         { startMs: s2, endMs: e2 },
-        { startMs: s3, endMs: e3 },
+        { startMs: s3, endMs: Math.max(s3 + 800, e3) },
       ],
+    };
+  }
+
+  if (difficulty === 'grandmaster') {
+    const thinkMs = Math.round(1200 + rng() * 3200);
+    const typingStart = Math.max(350, thinkMs - Math.round(700 + rng() * 600));
+    return {
+      willTimeout: false,
+      thinkMs,
+      typingPulses: [{ startMs: typingStart, endMs: thinkMs }],
+    };
+  }
+
+  if (difficulty === 'scholar') {
+    const thinkMs = Math.round(2100 + rng() * 6200);
+    const typingStart = Math.max(500, thinkMs - Math.round(1100 + rng() * 900));
+    return {
+      willTimeout: false,
+      thinkMs,
+      typingPulses: [{ startMs: typingStart, endMs: thinkMs }],
     };
   }
 
@@ -824,7 +911,9 @@ export function planBotTurnBehavior(
 // BroadcastChannel + localStorage + Supabase Realtime sync
 type SyncEvent =
   | { type: 'ROOM_UPDATED'; room: GameRoom; senderId: string; rematchFromCode?: string }
-  | { type: 'TYPING_STATE'; roomCode: string; playerId: string; isTyping: boolean };
+  | { type: 'TYPING_STATE'; roomCode: string; playerId: string; isTyping: boolean }
+  | { type: 'QUICK_REACTION'; event: QuickReactionEvent }
+  | { type: 'ROOM_NUDGE'; event: NudgeEvent };
 
 let channel: BroadcastChannel | null = null;
 function getChannel(): BroadcastChannel | null {
@@ -871,10 +960,36 @@ export function broadcastTypingState(
   broadcastSupabaseTyping(roomCode, playerId, isTyping);
 }
 
+export function broadcastQuickReaction(event: QuickReactionEvent): void {
+  try {
+    getChannel()?.postMessage({
+      type: 'QUICK_REACTION',
+      event,
+    } satisfies SyncEvent);
+  } catch {
+    // Ignore
+  }
+  broadcastSupabaseReaction(event);
+}
+
+export function broadcastRoomNudge(event: NudgeEvent): void {
+  try {
+    getChannel()?.postMessage({
+      type: 'ROOM_NUDGE',
+      event,
+    } satisfies SyncEvent);
+  } catch {
+    // Ignore
+  }
+  broadcastSupabaseNudge(event);
+}
+
 export function subscribeRealtimeSync(
   playerId: string,
   onRoomUpdate: (room: GameRoom, meta?: RoomUpdateMeta) => void,
-  onTypingChange?: (roomCode: string, playerId: string, isTyping: boolean) => void
+  onTypingChange?: (roomCode: string, playerId: string, isTyping: boolean) => void,
+  onReaction?: (event: QuickReactionEvent) => void,
+  onNudge?: (event: NudgeEvent) => void
 ): () => void {
   const ch = getChannel();
   const handleMessage = (ev: MessageEvent<SyncEvent>) => {
@@ -887,6 +1002,10 @@ export function subscribeRealtimeSync(
       });
     } else if (data.type === 'TYPING_STATE' && onTypingChange) {
       onTypingChange(data.roomCode, data.playerId, data.isTyping);
+    } else if (data.type === 'QUICK_REACTION' && onReaction) {
+      onReaction(data.event);
+    } else if (data.type === 'ROOM_NUDGE' && onNudge && data.event.toPlayerId === playerId) {
+      onNudge(data.event);
     }
   };
   ch?.addEventListener('message', handleMessage);
@@ -903,7 +1022,13 @@ export function subscribeRealtimeSync(
   };
   window.addEventListener('storage', handleStorage);
 
-  const unsubscribeSupabase = subscribeSupabaseSync(playerId, onRoomUpdate, onTypingChange);
+  const unsubscribeSupabase = subscribeSupabaseSync(
+    playerId,
+    onRoomUpdate,
+    onTypingChange,
+    onReaction,
+    onNudge
+  );
 
   return () => {
     ch?.removeEventListener('message', handleMessage);

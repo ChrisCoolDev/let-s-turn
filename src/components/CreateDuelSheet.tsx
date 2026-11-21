@@ -1,15 +1,43 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowRight, Check, Copy, Play, Shuffle, Sparkles, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowRight,
+  Bot,
+  Check,
+  Copy,
+  Crown,
+  Flame,
+  Lock,
+  Play,
+  Shuffle,
+  Sparkles,
+  Swords,
+  Users,
+  X,
+} from 'lucide-react';
+import { BOT_DIFFICULTIES } from '../engine/gamification';
 import { ShareIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
 import { useI18n } from '../i18n';
 import { requestNotificationPermissionOnGesture } from '../services/multiplayer';
-import type { GameMode, GameRoom, Language, WordLength } from '../types/game';
+import type {
+  BotDifficulty,
+  GameMode,
+  GameRoom,
+  Language,
+  WordLength,
+} from '../types/game';
 
 interface CreateDuelSheetProps {
   defaultDaily?: boolean;
+  playerLevel?: number;
   onClose: () => void;
-  onCreateRoom: (language: Language, wordLength: WordLength, mode: GameMode) => GameRoom;
+  onCreateRoom: (
+    language: Language,
+    wordLength: WordLength,
+    mode: GameMode,
+    botDifficulty?: BotDifficulty
+  ) => GameRoom;
   onEnterRoom: (roomCode: string) => void;
 }
 
@@ -88,6 +116,7 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
   defaultDaily = false,
+  playerLevel = 1,
   onClose,
   onCreateRoom,
   onEnterRoom,
@@ -96,6 +125,9 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
   const [language, setLanguage] = useState<Language>(() => (locale === 'fr' ? 'FR' : 'EN'));
   const [wordLength, setWordLength] = useState<WordLength>(4);
   const [isDaily, setIsDaily] = useState(defaultDaily);
+  const [playMode, setPlayMode] = useState<'coop' | 'duel'>('coop');
+  const [opponent, setOpponent] = useState<'friend' | 'miyu'>('friend');
+  const [miyuDifficulty, setMiyuDifficulty] = useState<BotDifficulty>('apprentice');
   const [createdRoom, setCreatedRoom] = useState<GameRoom | null>(null);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimerRef = useRef<number | null>(null);
@@ -113,8 +145,13 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
 
   const handleValidate = () => {
     void requestNotificationPermissionOnGesture();
-    const finalMode: GameMode = isDaily ? 'daily' : 'coop';
-    const room = onCreateRoom(language, wordLength, finalMode);
+    const finalMode: GameMode = isDaily ? 'daily' : playMode;
+    const chosenDifficulty = !isDaily && opponent === 'miyu' ? miyuDifficulty : undefined;
+    const room = onCreateRoom(language, wordLength, finalMode, chosenDifficulty);
+    if (chosenDifficulty) {
+      onEnterRoom(room.code);
+      return;
+    }
     setCreatedRoom(room);
   };
 
@@ -308,6 +345,141 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
               </div>
             </div>
 
+            {/* Style de partie : Coop vs Duel + Adversaire */}
+            {!isDaily && (
+              <>
+                <div>
+                  <SectionLabel>{t('createDuel.sectionMode')}</SectionLabel>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <OptionTile
+                      active={playMode === 'coop'}
+                      accentVar="--duo-green"
+                      badge={<Users className="h-3.5 w-3.5 stroke-[2.5]" />}
+                      title={t('createDuel.modeCoopTitle')}
+                      subtitle={t('createDuel.modeCoopSub')}
+                      onClick={() => setPlayMode('coop')}
+                    />
+                    <OptionTile
+                      active={playMode === 'duel'}
+                      accentVar="--duo-orange"
+                      badge={<Swords className="h-3.5 w-3.5 stroke-[2.5]" />}
+                      title={t('createDuel.modeDuelTitle')}
+                      subtitle={t('createDuel.modeDuelSub')}
+                      onClick={() => setPlayMode('duel')}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <SectionLabel>{t('createDuel.sectionOpponent')}</SectionLabel>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <OptionTile
+                      active={opponent === 'friend'}
+                      accentVar="--duo-blue"
+                      badge={<Users className="h-3.5 w-3.5 stroke-[2.5]" />}
+                      title={t('createDuel.opponentFriendTitle')}
+                      subtitle={t('createDuel.opponentFriendSub')}
+                      onClick={() => setOpponent('friend')}
+                    />
+                    <OptionTile
+                      active={opponent === 'miyu'}
+                      accentVar="--duo-orange"
+                      badge={<Bot className="h-3.5 w-3.5 stroke-[2.5]" />}
+                      title={t('createDuel.opponentMiyuTitle')}
+                      subtitle={t('createDuel.opponentMiyuSub')}
+                      onClick={() => setOpponent('miyu')}
+                    />
+                  </div>
+                </div>
+
+                {opponent === 'miyu' && (
+                  <div>
+                    <SectionLabel>{t('createDuel.sectionDifficulty')}</SectionLabel>
+                    <div className="space-y-2">
+                      {(['apprentice', 'scholar', 'grandmaster'] as const).map((diff) => {
+                        const cfg = BOT_DIFFICULTIES[diff];
+                        const locked = playerLevel < cfg.unlockLevel;
+                        const active = miyuDifficulty === diff && !locked;
+                        const accentVar =
+                          diff === 'grandmaster'
+                            ? '--duo-orange'
+                            : diff === 'scholar'
+                            ? '--duo-blue'
+                            : '--duo-green';
+                        const Icon =
+                          diff === 'grandmaster' ? Crown : diff === 'scholar' ? Flame : Sparkles;
+
+                        return (
+                          <button
+                            key={diff}
+                            type="button"
+                            disabled={locked}
+                            aria-pressed={active}
+                            onClick={() => {
+                              if (!locked) setMiyuDifficulty(diff);
+                            }}
+                            className={`flex w-full items-center justify-between gap-2.5 rounded-2xl border-2 px-3.5 py-2.5 text-left transition ${
+                              locked ? 'cursor-not-allowed opacity-60' : 'active:translate-y-0.5'
+                            }`}
+                            style={{
+                              backgroundColor: active
+                                ? `color-mix(in srgb, var(${accentVar}) 12%, var(--bg-tile))`
+                                : 'var(--bg-tile)',
+                              borderColor: active ? `var(${accentVar})` : 'var(--border-tile)',
+                              borderBottomWidth: active ? 5 : 4,
+                            }}
+                          >
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <span
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                style={{
+                                  backgroundColor: active
+                                    ? `var(${accentVar})`
+                                    : 'var(--bg-muted)',
+                                  color: active ? '#ffffff' : 'var(--text-muted)',
+                                }}
+                              >
+                                {locked ? (
+                                  <Lock className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Icon className="h-3.5 w-3.5 stroke-[2.5]" />
+                                )}
+                              </span>
+                              <span
+                                className="truncate text-[15px] font-black"
+                                style={{ color: 'var(--text-primary)' }}
+                              >
+                                {t(`bot.${diff}.title`)}
+                              </span>
+                            </div>
+                            <span
+                              className="shrink-0 rounded-full px-2 py-0.5 text-xs font-black"
+                              style={{
+                                backgroundColor: locked
+                                  ? 'var(--bg-muted)'
+                                  : active
+                                  ? `color-mix(in srgb, var(${accentVar}) 16%, transparent)`
+                                  : 'var(--bg-muted)',
+                                color: locked
+                                  ? 'var(--text-muted)'
+                                  : active
+                                  ? `var(${accentVar})`
+                                  : 'var(--text-muted)',
+                              }}
+                            >
+                              {locked
+                                ? t('bot.lockedLevel', { level: cfg.unlockLevel })
+                                : t(`bot.${diff}.sub`)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             <button
               type="button"
               onClick={handleValidate}
@@ -331,6 +503,10 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
                   {createdRoom.mode === 'daily'
                     ? t('createDuel.dailyHeader', { count: createdRoom.wordLength })
                     : `${
+                        createdRoom.mode === 'duel'
+                          ? t('createDuel.duelBadge')
+                          : t('createDuel.coopBadge')
+                      } · ${
                         createdRoom.language === 'FR' ? t('common.french') : t('common.english')
                       } · ${t('common.letters', { count: createdRoom.wordLength })}`}
                 </span>

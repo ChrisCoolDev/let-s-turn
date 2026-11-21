@@ -1,20 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Award, Star } from 'lucide-react';
-import { getBadgeDefinitions, getLevelInfo } from '../engine/gamification';
+import { ArrowRight, Award, Sparkles, Star, Swords, Trophy } from 'lucide-react';
+import { computeDuelScores, getBadgeDefinitions, getLevelInfo } from '../engine/gamification';
 import { fireVictoryEffect } from '../engine/victoryEffects';
 import { findShortestPath } from '../engine/wordLadder';
-import { useI18n } from '../i18n';
+import { useI18n, type TranslationKey } from '../i18n';
 import { resolveRoomParticipants } from '../services/multiplayer';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
-import type { GameRoom, PlayerProfile } from '../types/game';
+import type { BadgeUpgradeResult, GameRoom, PlayerProfile } from '../types/game';
 
 interface VictoryScreenProps {
   room: GameRoom;
   profile: PlayerProfile;
-  newlyUnlockedBadgeIds: string[];
+  badgeUpgrades: BadgeUpgradeResult[];
   earnedXp: number;
   earnedStars: number;
+  leveledUpTo?: number | null;
+  levelUpBonusStars?: number;
+  tempoBonusXp?: number;
+  goldenRouteClaimed?: boolean;
+  duelMvpBonusStars?: number;
+  duoStreakDays?: number;
   onRematch: (roomCode: string) => void;
   onBackToHub: () => void;
 }
@@ -22,9 +28,15 @@ interface VictoryScreenProps {
 export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   room,
   profile,
-  newlyUnlockedBadgeIds,
+  badgeUpgrades,
   earnedXp,
   earnedStars,
+  leveledUpTo = null,
+  levelUpBonusStars = 0,
+  tempoBonusXp = 0,
+  goldenRouteClaimed = false,
+  duelMvpBonusStars = 0,
+  duoStreakDays = 0,
   onRematch,
   onBackToHub,
 }) => {
@@ -37,11 +49,14 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   const starRating = isAbandoned ? 0 : isOptimal ? 3 : actualSteps <= room.optimalPar + 2 ? 2 : 1;
 
   const {
+    me,
     partner,
     waitingForPartner: partnerWaiting,
     isBot: partnerIsBot,
   } = resolveRoomParticipants(room, profile);
   const levelInfo = getLevelInfo(profile.xp, locale);
+  const duelScores =
+    !isAbandoned && room.mode === 'duel' ? computeDuelScores(room, me.playerId) : null;
 
   const durationSec = room.completedAt
     ? Math.max(1, Math.round((room.completedAt - room.startedAt) / 1000))
@@ -57,10 +72,16 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
     };
   }, [profile.activeParticle, isAbandoned]);
 
-  const unlockedBadges = useMemo(() => {
+  const upgradedBadgeEntries = useMemo(() => {
     if (isAbandoned) return [];
-    return getBadgeDefinitions(locale).filter((b) => newlyUnlockedBadgeIds.includes(b.id));
-  }, [newlyUnlockedBadgeIds, isAbandoned, locale]);
+    const defs = getBadgeDefinitions(locale);
+    return badgeUpgrades
+      .map((upgrade) => {
+        const def = defs.find((b) => b.id === upgrade.badgeId);
+        return def ? { upgrade, def } : null;
+      })
+      .filter((x): x is { upgrade: BadgeUpgradeResult; def: (typeof defs)[number] } => x !== null);
+  }, [badgeUpgrades, isAbandoned, locale]);
 
   const chainWords = useMemo(() => {
     return [room.startWord, ...room.moves.map((m) => m.word)];
@@ -120,6 +141,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               size={60}
               ringColor={profile.color}
               ringGapColor="var(--bg-app)"
+              frame={profile.activeFrame}
             />
             <FigmaAvatar
               avatarId={partner.avatarId}
@@ -161,6 +183,66 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
 
         {/* Carte Résumé + Transformation visuelle */}
         <div className="duo-card mt-5 p-4">
+          {duelScores && (
+            <div
+              className="mb-3.5 rounded-2xl border-2 px-3 py-2.5"
+              style={{
+                borderColor: duelScores.isMeWinning ? 'var(--duo-gold)' : 'var(--border-tile)',
+                backgroundColor: duelScores.isMeWinning ? 'var(--duo-gold-bg)' : 'var(--bg-muted)',
+              }}
+            >
+              <div className="flex items-center justify-between gap-2 text-xs font-black">
+                <span className="inline-flex items-center gap-1 text-[var(--duo-orange-shadow)]">
+                  <Swords className="h-3.5 w-3.5" />
+                  {duelScores.isTie
+                    ? t('victory.duelTie')
+                    : duelScores.isMeWinning
+                    ? t('victory.duelWinnerYou')
+                    : t('victory.duelWinnerPartner', { name: partner.name })}
+                </span>
+                {duelMvpBonusStars > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] font-black text-[var(--duo-gold-text)]">
+                    <Trophy className="h-3 w-3 text-[var(--duo-orange)]" />
+                    <span>{t('victory.duelMvpBonus')}</span>
+                    <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-center">
+                <div className="rounded-xl bg-[var(--bg-surface)] px-2 py-1.5">
+                  <p className="truncate text-[11px] font-bold text-[var(--text-muted)]">
+                    {t('common.you')}
+                  </p>
+                  <p
+                    className="text-base font-black tabular-nums"
+                    style={{
+                      color: duelScores.isMeWinning
+                        ? 'var(--duo-green-text)'
+                        : 'var(--text-primary)',
+                    }}
+                  >
+                    {duelScores.myScore} pts
+                  </p>
+                </div>
+                <div className="rounded-xl bg-[var(--bg-surface)] px-2 py-1.5">
+                  <p className="truncate text-[11px] font-bold text-[var(--text-muted)]">
+                    {partnerWaiting ? t('common.partner') : partner.name}
+                  </p>
+                  <p
+                    className="text-base font-black tabular-nums"
+                    style={{
+                      color: duelScores.isOpponentWinning
+                        ? 'var(--duo-blue-text)'
+                        : 'var(--text-primary)',
+                    }}
+                  >
+                    {duelScores.opponentScore} pts
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Chiffres clés sur 3 colonnes */}
           <div
             className="grid grid-cols-3 gap-2 border-b pb-3.5 text-center"
@@ -371,8 +453,10 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
         {!isAbandoned && (
           <div className="duo-card mt-3.5 p-4">
             <div className="flex items-center justify-between gap-2 text-[15px] font-black">
-              <span className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
-                <FigmaFlameIcon size={18} />+{earnedXp} XP · +{earnedStars} ⭐
+              <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                <FigmaFlameIcon size={18} />
+                <span>+{earnedXp} XP · +{earnedStars}</span>
+                <Star className="h-4 w-4 fill-[#ffc800] text-[#e5a400]" />
               </span>
               <span className="text-sm" style={{ color: 'var(--duo-blue-text)' }}>
                 {t('common.levelShort', { level: levelInfo.level })} · {levelInfo.title}
@@ -392,11 +476,102 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 <div className="mx-2 mt-0.5 h-1 rounded-full bg-white/35" />
               </div>
             </div>
+            {leveledUpTo && (
+              <div
+                className="animate-pop-in mt-3 flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-center text-xs font-black"
+                style={{
+                  backgroundColor: 'var(--duo-gold-bg)',
+                  color: 'var(--duo-gold-text)',
+                }}
+              >
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--duo-orange)]" />
+                <span>
+                  {t('victory.levelUpPrefix', { level: leveledUpTo })} +{levelUpBonusStars}
+                </span>
+                <Star className="h-3.5 w-3.5 fill-[#ffc800] text-[#e5a400]" />
+                <span>{t('victory.levelUpSuffix')}</span>
+              </div>
+            )}
+            {(goldenRouteClaimed ||
+              tempoBonusXp > 0 ||
+              duoStreakDays > 0 ||
+              (!isAbandoned &&
+                partnerIsBot &&
+                (room.botDifficulty === 'scholar' || room.botDifficulty === 'grandmaster'))) && (
+              <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
+                {!isAbandoned && partnerIsBot && room.botDifficulty === 'scholar' && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black"
+                    style={{
+                      backgroundColor: 'var(--duo-blue-bg)',
+                      color: 'var(--duo-blue-text)',
+                    }}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    <span>{t('victory.bonusMiyuScholar')}</span>
+                  </span>
+                )}
+                {!isAbandoned && partnerIsBot && room.botDifficulty === 'grandmaster' && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black"
+                    style={{
+                      backgroundColor: 'var(--duo-gold-bg)',
+                      color: 'var(--duo-gold-text)',
+                    }}
+                  >
+                    <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                    <span>{t('victory.bonusMiyuGrandmaster')}</span>
+                  </span>
+                )}
+                {goldenRouteClaimed && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black"
+                    style={{
+                      backgroundColor: 'var(--duo-gold-bg)',
+                      color: 'var(--duo-gold-text)',
+                    }}
+                  >
+                    <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                    <span>{t('victory.bonusGoldenRoute')} +1</span>
+                    <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                  </span>
+                )}
+                {tempoBonusXp > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black"
+                    style={{
+                      backgroundColor: 'var(--duo-orange-bg)',
+                      color: 'var(--duo-orange-shadow)',
+                    }}
+                  >
+                    <FigmaFlameIcon size={12} />
+                    <span>{t('victory.bonusTempoXp', { xp: tempoBonusXp })}</span>
+                  </span>
+                )}
+                {duoStreakDays > 0 && !partnerWaiting && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black"
+                    style={{
+                      backgroundColor: 'var(--duo-orange-bg)',
+                      color: 'var(--duo-orange-shadow)',
+                    }}
+                  >
+                    <FigmaFlameIcon size={12} />
+                    <span>
+                      {t('victory.duoStreakBanner', {
+                        name: partner.name,
+                        days: duoStreakDays,
+                      })}
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* Carte des Badges débloqués */}
-        {unlockedBadges.length > 0 && (
+        {upgradedBadgeEntries.length > 0 && (
           <div
             className="duo-card animate-pop-in mt-3.5 p-4"
             style={{
@@ -412,20 +587,37 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               {t('victory.newBadge')}
             </div>
             <div className="mt-2.5 space-y-2.5">
-              {unlockedBadges.map((badge) => (
-                <div key={badge.id} className="flex items-center gap-3">
+              {upgradedBadgeEntries.map(({ upgrade, def }) => (
+                <div key={`${def.id}-${upgrade.newTier}`} className="flex items-center gap-3">
                   <div
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
                     style={{ backgroundColor: 'var(--bg-surface)' }}
                   >
-                    <FigmaBadgeIcon badgeId={badge.id} size={28} />
+                    <FigmaBadgeIcon badgeId={def.id} size={28} />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
-                      {badge.title}
-                    </p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
+                        {def.title}
+                      </p>
+                      <span
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-black"
+                        style={{
+                          backgroundColor: 'var(--bg-surface)',
+                          color: 'var(--duo-gold-text)',
+                        }}
+                      >
+                        <span>
+                          {t('victory.badgeTierLabel', {
+                            tier: t(`badge.tier.${upgrade.newTier}` as TranslationKey),
+                          })}{' '}
+                          · +{upgrade.rewardStars}
+                        </span>
+                        <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                      </span>
+                    </div>
                     <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
-                      {badge.description}
+                      {def.description}
                     </p>
                   </div>
                 </div>

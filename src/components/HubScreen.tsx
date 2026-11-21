@@ -1,24 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowRight,
+  BellRing,
   Check,
+  Gift,
   Hash,
   HelpCircle,
   Plus,
+  Snowflake,
   Star,
+  Swords,
   X,
 } from 'lucide-react';
 import { FigmaAvatar, FigmaFlameIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
-import { getLevelInfo } from '../engine/gamification';
-import { useI18n } from '../i18n';
 import {
+  computeDuelScores,
+  DAILY_CHEST_STARS,
+  DAILY_CHEST_XP,
+  ensureTodayQuests,
+  getActiveDuoStreak,
+  getLevelInfo,
+} from '../engine/gamification';
+import { useI18n, type TranslationKey } from '../i18n';
+import {
+  getRoomTurnTimeoutMs,
   isWaitingPartner,
   resolveRoomParticipants,
-  TURN_TIMEOUT_MS,
 } from '../services/multiplayer';
 import { PwaInstallBanner } from './PwaInstallBanner';
-import type { GameRoom, PlayerProfile } from '../types/game';
+import type { DailyQuest, GameRoom, PlayerProfile, QuestTier } from '../types/game';
 
 interface HubScreenProps {
   profile: PlayerProfile;
@@ -30,6 +41,10 @@ interface HubScreenProps {
   onJoinByCode: (code: string) => Promise<void> | void;
   onOpenCollection: () => void;
   onStartTour?: () => void;
+  onClaimQuest?: (questId: string) => void;
+  onClaimChest?: () => void;
+  nudgedRooms?: Record<string, number>;
+  onNudgeRoom?: (room: GameRoom) => void;
 }
 
 function isSameLocalDay(timestampMs: number): boolean {
@@ -176,6 +191,10 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   onJoinByCode,
   onOpenCollection,
   onStartTour,
+  onClaimQuest,
+  onClaimChest,
+  nudgedRooms = {},
+  onNudgeRoom,
 }) => {
   const { locale, t, intlLocale, formatMoves } = useI18n();
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -184,6 +203,10 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   const [now, setNow] = useState<number>(() => Date.now());
 
   const levelInfo = getLevelInfo(profile.xp, locale);
+  const questState = ensureTodayQuests(profile);
+  const completedQuestsCount = questState.quests.filter((q) => q.progress >= q.target).length;
+  const allQuestsDone = completedQuestsCount === questState.quests.length;
+  const freezeCount = profile.streakFreezes ?? 0;
 
   const activeRooms = rooms
     .filter((r) => r.status === 'active')
@@ -242,7 +265,13 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           onClick={onOpenCollection}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          <FigmaAvatar avatarId={profile.avatarId} size={48} ringColor={profile.color} onlineDot />
+          <FigmaAvatar
+            avatarId={profile.avatarId}
+            size={48}
+            ringColor={profile.color}
+            frame={profile.activeFrame}
+            onlineDot
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="truncate text-lg font-black" style={{ color: 'var(--text-primary)' }}>
@@ -269,6 +298,22 @@ export const HubScreen: React.FC<HubScreenProps> = ({
               {profile.streak}
             </span>
           </div>
+          {freezeCount > 0 && (
+            <button
+              type="button"
+              onClick={onOpenCollection}
+              className="flex items-center gap-1 rounded-xl border-2 px-2 py-1.5 transition active:scale-95"
+              style={{
+                borderColor: 'var(--duo-blue)',
+                backgroundColor: 'var(--duo-blue-bg)',
+                color: 'var(--duo-blue-text)',
+              }}
+              title={t('hub.freezeTooltip', { count: freezeCount })}
+            >
+              <Snowflake className="h-3.5 w-3.5 stroke-[2.75]" />
+              <span className="text-xs font-black">{freezeCount}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenCollection}
@@ -375,6 +420,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           <div className="space-y-3">
             {activeRooms.map((room, index) => {
               const {
+                me,
                 partner,
                 waitingForPartner: waiting,
                 isBot,
@@ -386,14 +432,27 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                 .split('')
                 .filter((c, i) => c === room.targetWord[i]).length;
               const progress = Math.round((matched / room.wordLength) * 100);
+              const duoStreak = !waiting ? getActiveDuoStreak(profile, partner.playerId) : 0;
+              const duelScores =
+                room.mode === 'duel' ? computeDuelScores(room, me.playerId) : null;
+              const lastNudgeTs = nudgedRooms[room.code] ?? 0;
+              const nudgeOnCooldown = now - lastNudgeTs < 60_000;
+              const canNudge = !isMyTurn && !waiting && !isBot && Boolean(onNudgeRoom);
 
               return (
-                <button
+                <div
                   key={room.code}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   data-tour={index === 0 ? 'hub-active-games' : undefined}
                   onClick={() => onOpenRoom(room.code)}
-                  className="duo-card group w-full p-4 text-left transition active:translate-y-0.5"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onOpenRoom(room.code);
+                    }
+                  }}
+                  className="duo-card group w-full cursor-pointer p-4 text-left transition active:translate-y-0.5"
                   style={{
                     borderColor: isMyTurn ? 'var(--duo-green)' : undefined,
                   }}
@@ -410,13 +469,38 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                         isBot={isBot}
                       />
                       <div className="min-w-0 leading-tight">
-                        <p
-                          className="truncate text-[17px] font-black"
-                          style={{ color: waiting ? 'var(--text-muted)' : 'var(--text-primary)' }}
-                        >
-                          {waiting ? t('common.waiting') : partner.name}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p
+                            className="truncate text-[17px] font-black"
+                            style={{ color: waiting ? 'var(--text-muted)' : 'var(--text-primary)' }}
+                          >
+                            {waiting ? t('common.waiting') : partner.name}
+                          </p>
+                          {duoStreak > 0 && (
+                            <span
+                              className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-black"
+                              style={{
+                                backgroundColor: 'var(--duo-orange-bg)',
+                                color: 'var(--duo-orange-shadow)',
+                              }}
+                            >
+                              <FigmaFlameIcon size={11} />
+                              {t('hub.duoStreakLabel', { days: duoStreak })}
+                            </span>
+                          )}
+                        </div>
                         <p className="truncate text-sm font-bold text-[var(--text-muted)]">
+                          {room.mode === 'duel' && (
+                            <span className="mr-1.5 inline-flex items-center gap-0.5 text-[var(--duo-orange-shadow)]">
+                              <Swords className="h-3 w-3" />
+                              {t('hub.modeDuelTag')} ·
+                            </span>
+                          )}
+                          {isBot && room.botDifficulty && room.botDifficulty !== 'apprentice' && (
+                            <span className="mr-1.5 text-[var(--duo-blue-text)]">
+                              {t(`bot.${room.botDifficulty}.title`)} ·
+                            </span>
+                          )}
                           {room.language === 'FR' ? t('common.french') : t('common.english')} ·{' '}
                           {t('common.letters', { count: room.wordLength })}
                         </p>
@@ -458,7 +542,10 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                           const remainingSec = Math.max(
                             0,
                             Math.ceil(
-                              ((room.turnStartedAt ?? room.startedAt) + TURN_TIMEOUT_MS - now) / 1000
+                              ((room.turnStartedAt ?? room.startedAt) +
+                                getRoomTurnTimeoutMs(room) -
+                                now) /
+                                1000
                             )
                           );
                           return (
@@ -491,7 +578,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                     <WordTiles word={room.targetWord} variant="target" size="sm" />
                   </div>
 
-                  {/* Progression */}
+                  {/* Progression + score duel ou bouton Relancer */}
                   <div className="mt-4 flex items-center gap-3">
                     <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--bg-muted)]">
                       <div
@@ -499,15 +586,42 @@ export const HubScreen: React.FC<HubScreenProps> = ({
                         style={{ width: `${Math.max(6, progress)}%` }}
                       />
                     </div>
-                    <span
-                      className={`shrink-0 text-sm font-extrabold ${
-                        overPar ? 'text-[var(--duo-orange)]' : 'text-[var(--text-muted)]'
-                      }`}
-                    >
-                      {formatMoves(moves)} · {t('common.parShort', { par: room.optimalPar })}
-                    </span>
+                    {duelScores ? (
+                      <span className="shrink-0 text-xs font-black text-[var(--duo-orange-shadow)]">
+                        {t('hub.duelScoreSummary', {
+                          me: duelScores.myScore,
+                          partner: duelScores.opponentScore,
+                        })}
+                      </span>
+                    ) : (
+                      <span
+                        className={`shrink-0 text-sm font-extrabold ${
+                          overPar ? 'text-[var(--duo-orange)]' : 'text-[var(--text-muted)]'
+                        }`}
+                      >
+                        {formatMoves(moves)} · {t('common.parShort', { par: room.optimalPar })}
+                      </span>
+                    )}
+                    {canNudge && (
+                      <button
+                        type="button"
+                        disabled={nudgeOnCooldown}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onNudgeRoom?.(room);
+                        }}
+                        className={`inline-flex shrink-0 items-center gap-1 rounded-xl border px-2.5 py-1 text-xs font-black transition ${
+                          nudgeOnCooldown
+                            ? 'border-[var(--border-tile)] bg-[var(--bg-muted)] text-[var(--text-muted)]'
+                            : 'border-[var(--duo-blue)] bg-[var(--duo-blue-bg)] text-[var(--duo-blue-text)] hover:opacity-90 active:scale-95'
+                        }`}
+                      >
+                        <BellRing className="h-3 w-3" />
+                        {nudgeOnCooldown ? t('hub.nudgeSent') : t('hub.nudgeButton')}
+                      </button>
+                    )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -547,6 +661,173 @@ export const HubScreen: React.FC<HubScreenProps> = ({
           todayDailyRoom ? onOpenRoom(todayDailyRoom.code) : onOpenCreateDuel(true)
         }
       />
+
+      {/* Quêtes du jour & Coffre quotidien */}
+      <section className="duo-card mt-5 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[15px] font-black uppercase tracking-wider text-[var(--text-muted)]">
+            {t('quests.title')}
+          </h2>
+          <span
+            className="rounded-full px-2.5 py-0.5 text-xs font-black"
+            style={{
+              backgroundColor: allQuestsDone ? 'var(--duo-green-bg)' : 'var(--bg-muted)',
+              color: allQuestsDone ? 'var(--duo-green-text)' : 'var(--text-muted)',
+            }}
+          >
+            {t('quests.completedCount', {
+              done: completedQuestsCount,
+              total: questState.quests.length,
+            })}
+          </span>
+        </div>
+
+        <div className="mt-3 space-y-2.5">
+          {questState.quests.map((quest: DailyQuest) => {
+            const done = quest.progress >= quest.target;
+            const pct = Math.min(100, Math.round((quest.progress / quest.target) * 100));
+            const tierColors: Record<QuestTier, { bg: string; fg: string; bar: string }> = {
+              bronze: { bg: '#cd7f3222', fg: '#a15c1b', bar: '#cd7f32' },
+              silver: { bg: '#94a3b828', fg: '#475569', bar: '#64748b' },
+              gold: { bg: 'var(--duo-gold-bg)', fg: 'var(--duo-gold-text)', bar: 'var(--duo-gold)' },
+            };
+            const tc = tierColors[quest.tier];
+            const label = t(`quests.kind.${quest.kind}` as TranslationKey, {
+              target: quest.target,
+            });
+
+            return (
+              <div
+                key={quest.id}
+                className="flex items-center gap-3 rounded-2xl border-2 px-3 py-2.5"
+                style={{
+                  borderColor: done && !quest.claimed ? 'var(--duo-green)' : 'var(--border-tile)',
+                  backgroundColor: quest.claimed
+                    ? 'color-mix(in srgb, var(--duo-green) 5%, var(--bg-surface))'
+                    : 'var(--bg-surface)',
+                }}
+              >
+                <span
+                  className="inline-flex h-8 min-w-11 shrink-0 items-center justify-center gap-0.5 rounded-xl px-2 text-xs font-black"
+                  style={{ backgroundColor: tc.bg, color: tc.fg }}
+                >
+                  +{quest.rewardStars}
+                  <Star className="h-3.5 w-3.5 fill-[#ffc800] text-[#e5a400]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p
+                      className="truncate text-sm font-extrabold"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      {label}
+                    </p>
+                    <span className="shrink-0 text-xs font-black tabular-nums text-[var(--text-muted)]">
+                      {quest.progress}/{quest.target}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-[var(--bg-muted)]">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: done ? 'var(--duo-green)' : tc.bar,
+                      }}
+                    />
+                  </div>
+                </div>
+                {quest.claimed ? (
+                  <span
+                    className="inline-flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-black"
+                    style={{
+                      backgroundColor: 'var(--duo-green-bg)',
+                      color: 'var(--duo-green-text)',
+                    }}
+                  >
+                    <Check className="h-3.5 w-3.5 stroke-[3]" />
+                    {t('quests.claimed')}
+                  </span>
+                ) : done ? (
+                  <button
+                    type="button"
+                    onClick={() => onClaimQuest?.(quest.id)}
+                    className="duo-btn duo-btn-green shrink-0 px-3 py-1.5 text-xs"
+                  >
+                    {t('quests.claim')}
+                  </button>
+                ) : (
+                  <span className="shrink-0 text-[11px] font-black text-[var(--text-muted)]">
+                    +{quest.rewardXp} XP
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Coffre du jour */}
+        <div
+          className="mt-3 flex items-center justify-between gap-3 rounded-2xl border-2 px-3.5 py-2.5"
+          style={{
+            borderColor: questState.chestClaimed
+              ? 'var(--duo-green)'
+              : allQuestsDone
+              ? 'var(--duo-gold)'
+              : 'var(--border-tile)',
+            backgroundColor: questState.chestClaimed
+              ? 'var(--duo-green-bg)'
+              : allQuestsDone
+              ? 'var(--duo-gold-bg)'
+              : 'var(--bg-muted)',
+          }}
+        >
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Gift
+              className="h-5 w-5 shrink-0"
+              style={{
+                color: questState.chestClaimed
+                  ? 'var(--duo-green-text)'
+                  : allQuestsDone
+                  ? 'var(--duo-orange)'
+                  : 'var(--text-muted)',
+              }}
+            />
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                {t('quests.chestTitle')}
+              </p>
+              <p className="truncate text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                {questState.chestClaimed ? t('quests.chestClaimed') : t('quests.chestDesc')}
+              </p>
+            </div>
+          </div>
+
+          {questState.chestClaimed ? (
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+              style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--duo-green-text)' }}
+            >
+              <Check className="h-4 w-4 stroke-[3]" />
+            </span>
+          ) : allQuestsDone ? (
+            <button
+              type="button"
+              onClick={() => onClaimChest?.()}
+              className="duo-btn duo-btn-gold inline-flex shrink-0 items-center gap-1 px-3 py-2 text-xs"
+            >
+              <span>{t('quests.chestOpen')}</span>
+              <span>(+{DAILY_CHEST_STARS}</span>
+              <Star className="h-3.5 w-3.5 fill-current" />
+              <span>· +{DAILY_CHEST_XP} XP)</span>
+            </button>
+          ) : (
+            <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-black text-[var(--duo-gold-text)]">
+              +{DAILY_CHEST_STARS}
+              <Star className="h-3.5 w-3.5 fill-[#ffc800] text-[#e5a400]" />
+            </span>
+          )}
+        </div>
+      </section>
 
       <PwaInstallBanner />
 

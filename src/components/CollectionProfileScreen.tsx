@@ -2,31 +2,46 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Check,
   Heart,
   Lock,
   PartyPopper,
+  Snowflake,
   Sparkles,
   Star,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
 import {
+  getActiveDuoStreak,
+  getAvatarFrameShopItems,
   getBadgeDefinitions,
+  getBadgeProgress,
   getLevelInfo,
   getParticleShopItems,
   getThemeShopItems,
+  getTileStyleShopItems,
+  MAX_STREAK_FREEZES,
+  STREAK_FREEZE_PRICE,
 } from '../engine/gamification';
+import {
+  computeWordRarityScore,
+  getTotalDictionaryWordCount,
+} from '../engine/wordLadder';
+import { MIYU_BOT_ID } from '../services/multiplayer';
 import { fireVictoryEffect } from '../engine/victoryEffects';
 import { isPlural, useI18n, type TranslationKey } from '../i18n';
 import { FigmaAvatar, FigmaBadgeIcon, FigmaFlameIcon } from './FigmaAssets';
 import { LanguageToggle } from './LanguageToggle';
 import { WordTiles } from './WordTiles';
 import type {
+  AvatarFrameId,
   ParticleEffectId,
   PlayerProfile,
   SavedChainRecord,
   ThemeId,
+  TileStyleId,
 } from '../types/game';
 
 function formatChainDate(
@@ -229,18 +244,63 @@ const PARTICLE_VISUALS: Record<
   lightning: { icon: Zap, color: '#1cb0f6', filled: true },
 };
 
+const TILE_PREVIEW_STYLES: Record<TileStyleId, React.CSSProperties> = {
+  classic: {
+    backgroundColor: 'var(--bg-tile)',
+    borderColor: 'var(--border-tile)',
+    color: 'var(--text-primary)',
+    borderWidth: 2,
+    borderBottomWidth: 4,
+  },
+  wood: {
+    background: 'linear-gradient(180deg, #f3dec0 0%, #e4c393 100%)',
+    borderColor: '#b98952',
+    color: '#4e2e0f',
+    borderWidth: 2,
+    borderBottomWidth: 4,
+  },
+  neon: {
+    backgroundColor: '#12182b',
+    borderColor: '#22d3ee',
+    color: '#e0f2fe',
+    borderWidth: 2,
+    borderBottomWidth: 4,
+    boxShadow: '0 0 10px rgba(34, 211, 238, 0.35)',
+  },
+  gold: {
+    background: 'linear-gradient(180deg, #fff3b0 0%, #ffd43b 65%, #f59f00 100%)',
+    borderColor: '#b7791f',
+    color: '#5c3800',
+    borderWidth: 2,
+    borderBottomWidth: 4,
+  },
+};
+
 interface CollectionProfileScreenProps {
   profile: PlayerProfile;
   onBack: () => void;
   onBuyOrActivateTheme: (themeId: ThemeId, priceStars: number) => boolean;
   onBuyOrActivateParticle: (particleId: ParticleEffectId, priceStars: number) => boolean;
+  onBuyOrActivateTileStyle: (tileStyleId: TileStyleId, priceStars: number) => boolean;
+  onBuyOrActivateAvatarFrame: (frameId: AvatarFrameId, priceStars: number) => boolean;
+  onBuyStreakFreeze: () => 'ok' | 'maxed' | 'no_stars';
 }
+
+const TIER_STYLES: Record<1 | 2 | 3 | 4, { bg: string; fg: string; dot: string }> = {
+  1: { bg: '#cd7f3222', fg: '#a15c1b', dot: '#cd7f32' },
+  2: { bg: '#94a3b828', fg: '#475569', dot: '#94a3b8' },
+  3: { bg: 'var(--duo-gold-bg)', fg: 'var(--duo-gold-text)', dot: '#f59e0b' },
+  4: { bg: 'var(--duo-blue-bg)', fg: 'var(--duo-blue-text)', dot: '#06b6d4' },
+};
 
 export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = ({
   profile,
   onBack,
   onBuyOrActivateTheme,
   onBuyOrActivateParticle,
+  onBuyOrActivateTileStyle,
+  onBuyOrActivateAvatarFrame,
+  onBuyStreakFreeze,
 }) => {
   const { locale, t } = useI18n();
   const [activeTab, setActiveTab] = useState<'badges' | 'stats' | 'shop'>('badges');
@@ -255,8 +315,34 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
 
   const levelInfo = getLevelInfo(profile.xp, locale);
   const badgeDefinitions = getBadgeDefinitions(locale);
+  const badgeProgressList = badgeDefinitions.map((badge) => ({
+    badge,
+    progress: getBadgeProgress(profile, badge),
+  }));
+  const unlockedTiersTotal = badgeProgressList.reduce(
+    (sum, item) => sum + item.progress.currentTier,
+    0
+  );
+  const maxTiersTotal = badgeDefinitions.length * 4;
   const themeShopItems = getThemeShopItems(locale);
   const particleShopItems = getParticleShopItems(locale);
+  const tileStyleShopItems = getTileStyleShopItems(locale);
+  const avatarFrameShopItems = getAvatarFrameShopItems(locale);
+  const unlockedTileStyles = profile.unlockedTileStyles ?? ['classic'];
+  const activeTileStyle = profile.activeTileStyle ?? 'classic';
+  const unlockedFrames = profile.unlockedFrames ?? ['none'];
+  const activeFrame = profile.activeFrame ?? 'none';
+  const freezeCount = profile.streakFreezes ?? 0;
+
+  const totalDictWords = getTotalDictionaryWordCount();
+  const rarestWords = [...profile.uniqueWordsUsed]
+    .sort(
+      (a, b) =>
+        computeWordRarityScore(b) - computeWordRarityScore(a) ||
+        b.length - a.length ||
+        a.localeCompare(b)
+    )
+    .slice(0, 8);
 
   const winRate =
     profile.gamesPlayed > 0
@@ -287,6 +373,43 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
       setShopNotice(t('profile.noticeNotEnoughStars', { name }));
     }
     window.setTimeout(() => setShopNotice(null), 2400);
+  };
+
+  const handleTileStyleAction = (tileStyleId: TileStyleId, price: number, name: string) => {
+    const ok = onBuyOrActivateTileStyle(tileStyleId, price);
+    if (ok) {
+      setShopNotice(t('profile.noticeTileStyleEquipped', { name }));
+    } else {
+      setShopNotice(t('profile.noticeNotEnoughStars', { name }));
+    }
+    window.setTimeout(() => setShopNotice(null), 2400);
+  };
+
+  const handleAvatarFrameAction = (frameId: AvatarFrameId, price: number, name: string) => {
+    const ok = onBuyOrActivateAvatarFrame(frameId, price);
+    if (ok) {
+      setShopNotice(t('profile.noticeFrameEquipped', { name }));
+    } else {
+      setShopNotice(t('profile.noticeNotEnoughStars', { name }));
+    }
+    window.setTimeout(() => setShopNotice(null), 2400);
+  };
+
+  const handleBuyFreeze = () => {
+    const res = onBuyStreakFreeze();
+    if (res === 'ok') {
+      setShopNotice(
+        t('profile.noticeFreezeBought', {
+          count: Math.min(MAX_STREAK_FREEZES, freezeCount + 1),
+          max: MAX_STREAK_FREEZES,
+        })
+      );
+    } else if (res === 'maxed') {
+      setShopNotice(t('profile.noticeFreezeMaxed', { max: MAX_STREAK_FREEZES }));
+    } else {
+      setShopNotice(t('profile.noticeNotEnoughStars', { name: t('profile.freezeName') }));
+    }
+    window.setTimeout(() => setShopNotice(null), 2600);
   };
 
   const savedCount = profile.savedBestChains.length;
@@ -320,7 +443,12 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
 
       {/* Carte Profil */}
       <div className="duo-card mt-4 flex items-center gap-3.5 p-4">
-        <FigmaAvatar avatarId={profile.avatarId} size={62} ringColor={profile.color} />
+        <FigmaAvatar
+          avatarId={profile.avatarId}
+          size={62}
+          ringColor={profile.color}
+          frame={activeFrame}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="truncate text-xl font-black" style={{ color: 'var(--text-primary)' }}>
@@ -379,26 +507,30 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
         })}
       </div>
 
-      {/* Contenu Onglet 1 : Mur des Badges */}
+      {/* Contenu Onglet 1 : Mur des Badges Évolutifs */}
       {activeTab === 'badges' && (
         <section className="mt-4 space-y-2.5">
           <p className="text-sm font-extrabold" style={{ color: 'var(--text-muted)' }}>
-            {t('profile.badgesUnlockedCount', {
-              unlocked: profile.unlockedBadges.length,
-              total: badgeDefinitions.length,
+            {t('profile.badgeTiersCount', {
+              unlocked: unlockedTiersTotal,
+              total: maxTiersTotal,
             })}
           </p>
-          {badgeDefinitions.map((badge) => {
-            const unlocked = profile.unlockedBadges.includes(badge.id);
+          {badgeProgressList.map(({ badge, progress }) => {
+            const tier = progress.currentTier;
+            const unlocked = tier > 0;
+            const tierStyle = unlocked ? TIER_STYLES[tier as 1 | 2 | 3 | 4] : null;
             return (
               <div
                 key={badge.id}
-                className={`duo-card flex items-center gap-3.5 p-3.5 ${
-                  unlocked ? '' : 'opacity-65 grayscale'
+                className={`duo-card flex items-start gap-3.5 p-3.5 ${
+                  unlocked ? '' : 'opacity-75'
                 }`}
               >
                 <div
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+                    unlocked ? '' : 'grayscale'
+                  }`}
                   style={{
                     backgroundColor: unlocked ? `${badge.color}22` : 'var(--bg-muted)',
                   }}
@@ -407,22 +539,22 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
+                    <h3 className="truncate text-base font-black" style={{ color: 'var(--text-primary)' }}>
                       {badge.title}
                     </h3>
-                    {unlocked ? (
+                    {tierStyle ? (
                       <span
-                        className="rounded-full px-2.5 py-0.5 text-xs font-black"
+                        className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-black"
                         style={{
-                          backgroundColor: 'var(--duo-green-bg)',
-                          color: 'var(--duo-green-text)',
+                          backgroundColor: tierStyle.bg,
+                          color: tierStyle.fg,
                         }}
                       >
-                        {t('profile.badgeUnlocked')}
+                        {t(`badge.tier.${tier}` as TranslationKey)}
                       </span>
                     ) : (
                       <span
-                        className="inline-flex items-center rounded-full px-2.5 py-0.5"
+                        className="inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5"
                         style={{
                           backgroundColor: 'var(--bg-muted)',
                           color: 'var(--text-muted)',
@@ -434,9 +566,63 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
+                  <p className="mt-0.5 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
                     {unlocked ? badge.description : badge.conditionLabel}
                   </p>
+
+                  {/* 4 pastilles de palier + barre de progression */}
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1">
+                      {([1, 2, 3, 4] as const).map((stepTier) => (
+                        <span
+                          key={stepTier}
+                          className="h-2.5 w-2.5 rounded-full border"
+                          style={{
+                            backgroundColor:
+                              tier >= stepTier ? TIER_STYLES[stepTier].dot : 'var(--bg-muted)',
+                            borderColor:
+                              tier >= stepTier ? TIER_STYLES[stepTier].dot : 'var(--border-tile)',
+                          }}
+                          title={t(`badge.tier.${stepTier}` as TranslationKey)}
+                        />
+                      ))}
+                    </div>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--bg-muted)]">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${progress.progressPct}%`,
+                          backgroundColor: unlocked ? badge.color : 'var(--duo-blue)',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-1 flex items-center justify-between text-[11px] font-extrabold">
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {t('badge.progress', {
+                        current: progress.currentValue,
+                        target: progress.nextTarget,
+                      })}
+                    </span>
+                    <span
+                      className="inline-flex items-center gap-0.5"
+                      style={{
+                        color: progress.isMaxed ? 'var(--duo-green-text)' : 'var(--duo-gold-text)',
+                      }}
+                    >
+                      {progress.isMaxed ? (
+                        t('badge.maxTier')
+                      ) : (
+                        <>
+                          <span>
+                            {t('badge.nextTierLabel')} +{progress.nextRewardStars}
+                          </span>
+                          <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                        </>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
             );
@@ -449,6 +635,150 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
         <section className="mt-5 space-y-6">
           {/* Vue d'ensemble */}
           <StatsSummaryCard profile={profile} winRate={winRate} optimalRate={optimalRate} />
+
+          {/* Flammes de duo par partenaire */}
+          {profile.duoStreaks && Object.keys(profile.duoStreaks).length > 0 && (
+            <div>
+              <h3
+                className="mb-3 text-sm font-black uppercase tracking-wider"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {t('profile.sectionDuoStreaks')}
+              </h3>
+              <div className="space-y-2">
+                {Object.values(profile.duoStreaks)
+                  .sort((a, b) => b.streak - a.streak || b.bestStreak - a.bestStreak)
+                  .slice(0, 5)
+                  .map((entry) => {
+                    const activeDays = getActiveDuoStreak(profile, entry.partnerId);
+                    return (
+                      <div
+                        key={entry.partnerId}
+                        className="duo-card flex items-center justify-between gap-3 px-3.5 py-2.5"
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <FigmaAvatar
+                            avatarId={entry.avatarId ?? 2}
+                            size={36}
+                            ringColor={entry.color ?? '#1cb0f6'}
+                            isBot={entry.partnerId === MIYU_BOT_ID}
+                          />
+                          <div className="min-w-0 leading-tight">
+                            <p
+                              className="truncate text-[15px] font-black"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              {entry.partnerName}
+                            </p>
+                            <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                              {t('profile.duoStreakBest', { best: entry.bestStreak })}
+                            </p>
+                          </div>
+                        </div>
+                        <span
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black"
+                          style={{
+                            backgroundColor:
+                              activeDays > 0 ? 'var(--duo-orange-bg)' : 'var(--bg-muted)',
+                            color: activeDays > 0 ? 'var(--duo-orange-shadow)' : 'var(--text-muted)',
+                          }}
+                        >
+                          <FigmaFlameIcon size={13} />
+                          {t('profile.duoStreakDays', { days: activeDays })}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Lexique personnel ("Pokédex des Mots") */}
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3
+                className="flex items-center gap-1.5 text-sm font-black uppercase tracking-wider"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <BookOpen className="h-4 w-4 text-[var(--duo-blue)]" />
+                {t('profile.sectionLexicon')}
+              </h3>
+              <span className="text-xs font-black" style={{ color: 'var(--duo-blue-text)' }}>
+                {t('profile.lexiconCount', {
+                  count: profile.uniqueWordsUsed.length,
+                  total: totalDictWords,
+                })}
+              </span>
+            </div>
+
+            <div className="duo-card p-3.5">
+              <div
+                className="h-2.5 w-full overflow-hidden rounded-full"
+                style={{ backgroundColor: 'var(--bg-muted)' }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${
+                      profile.uniqueWordsUsed.length > 0
+                        ? Math.max(
+                            3,
+                            Math.min(
+                              100,
+                              Math.round(
+                                (profile.uniqueWordsUsed.length / Math.max(1, totalDictWords)) * 100
+                              )
+                            )
+                          )
+                        : 0
+                    }%`,
+                    backgroundColor: 'var(--duo-blue)',
+                  }}
+                />
+              </div>
+
+              {rarestWords.length === 0 ? (
+                <p
+                  className="mt-3 text-center text-xs font-bold"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {t('profile.lexiconEmpty')}
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <p
+                    className="mb-2 text-xs font-black uppercase tracking-wider"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {t('profile.lexiconRarest')}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rarestWords.map((word, index) => (
+                      <span
+                        key={word}
+                        className="inline-flex items-center gap-1 rounded-xl border-2 px-2.5 py-1 text-xs font-black tracking-wider"
+                        style={
+                          index < 3
+                            ? {
+                                backgroundColor: 'var(--duo-gold-bg)',
+                                borderColor: 'var(--duo-gold)',
+                                color: 'var(--duo-gold-text)',
+                              }
+                            : {
+                                backgroundColor: 'var(--bg-muted)',
+                                borderColor: 'var(--border-tile)',
+                                color: 'var(--text-primary)',
+                              }
+                        }
+                      >
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Journal des chaînes */}
           <div>
@@ -502,6 +832,68 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
               {shopNotice}
             </div>
           )}
+
+          {/* Survie & Bonus : Gel de Série */}
+          <div>
+            <h3
+              className="mb-3 text-[13px] font-black uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {t('profile.sectionPowerUps')}
+            </h3>
+            <div className="duo-card flex items-center justify-between gap-3 p-3.5">
+              <div className="flex min-w-0 items-center gap-3">
+                <div
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                  style={{
+                    backgroundColor: 'var(--duo-blue-bg)',
+                    color: 'var(--duo-blue)',
+                  }}
+                >
+                  <Snowflake className="h-6 w-6 stroke-[2.5]" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="truncate text-[15px] font-black" style={{ color: 'var(--text-primary)' }}>
+                      {t('profile.freezeName')}
+                    </h4>
+                    <span
+                      className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black"
+                      style={{
+                        backgroundColor: 'var(--duo-blue-bg)',
+                        color: 'var(--duo-blue-text)',
+                      }}
+                    >
+                      {t('profile.freezeOwned', { count: freezeCount, max: MAX_STREAK_FREEZES })}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>
+                    {t('profile.freezeDesc')}
+                  </p>
+                </div>
+              </div>
+              {freezeCount >= MAX_STREAK_FREEZES ? (
+                <span
+                  className="shrink-0 rounded-xl px-3 py-2 text-xs font-black uppercase"
+                  style={{
+                    backgroundColor: 'var(--duo-green-bg)',
+                    color: 'var(--duo-green-text)',
+                  }}
+                >
+                  {t('profile.freezeMaxed')}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleBuyFreeze}
+                  className="duo-btn duo-btn-gold flex shrink-0 items-center gap-1 px-3.5 py-2.5 text-sm"
+                >
+                  <Star className="h-3.5 w-3.5 fill-current" />
+                  {STREAK_FREEZE_PRICE}
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Thèmes : aperçus miniatures du plateau */}
           <div>
@@ -670,6 +1062,168 @@ export const CollectionProfileScreen: React.FC<CollectionProfileScreenProps> = (
                       </span>
                     </span>
                   </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Style des tuiles */}
+          <div>
+            <h3
+              className="mb-3 text-sm font-black uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {t('profile.sectionTileStyles')}
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              {tileStyleShopItems.map((item) => {
+                const unlocked = unlockedTileStyles.includes(item.id);
+                const active = activeTileStyle === item.id;
+                const previewStyle = TILE_PREVIEW_STYLES[item.id];
+                return (
+                  <div
+                    key={item.id}
+                    className="duo-card flex flex-col justify-between p-3"
+                    style={active ? { borderColor: 'var(--duo-green)' } : undefined}
+                  >
+                    <div>
+                      <div
+                        className="flex h-16 items-center justify-center gap-1.5 rounded-xl border"
+                        style={{
+                          backgroundColor: 'var(--bg-muted)',
+                          borderColor: 'var(--border-tile)',
+                        }}
+                      >
+                        {['L', 'E', 'T'].map((char) => (
+                          <span
+                            key={char}
+                            className="flex h-9 w-8 items-center justify-center rounded-lg font-black"
+                            style={previewStyle}
+                          >
+                            {char}
+                          </span>
+                        ))}
+                      </div>
+                      <p
+                        className="mt-2.5 truncate px-0.5 text-[15px] font-black"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {item.name}
+                      </p>
+                      <p
+                        className="truncate px-0.5 text-xs font-bold"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {item.description}
+                      </p>
+                    </div>
+
+                    <div className="mt-2.5">
+                      {active ? (
+                        <span
+                          className="flex h-10 w-full items-center justify-center gap-1 rounded-xl text-sm font-black uppercase tracking-wide"
+                          style={{ color: 'var(--duo-green-text)' }}
+                        >
+                          <Check className="h-4 w-4 stroke-[3]" />
+                          {t('profile.equipped')}
+                        </span>
+                      ) : unlocked ? (
+                        <button
+                          type="button"
+                          onClick={() => handleTileStyleAction(item.id, 0, item.name)}
+                          className="duo-btn duo-btn-white h-10 w-full text-sm uppercase tracking-wide"
+                        >
+                          {t('profile.equip')}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleTileStyleAction(item.id, item.priceStars, item.name)
+                          }
+                          className="duo-btn duo-btn-gold flex h-10 w-full items-center justify-center gap-1 text-sm"
+                        >
+                          <Star className="h-3.5 w-3.5 fill-current" />
+                          {item.priceStars}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Cadres d'avatar */}
+          <div>
+            <h3
+              className="mb-3 text-sm font-black uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {t('profile.sectionAvatarFrames')}
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              {avatarFrameShopItems.map((item) => {
+                const unlocked = unlockedFrames.includes(item.id);
+                const active = activeFrame === item.id;
+                return (
+                  <div
+                    key={item.id}
+                    className="duo-card flex flex-col justify-between p-3"
+                    style={active ? { borderColor: 'var(--duo-green)' } : undefined}
+                  >
+                    <div className="flex flex-col items-center pt-1 text-center">
+                      <FigmaAvatar
+                        avatarId={profile.avatarId}
+                        size={48}
+                        ringColor={profile.color}
+                        frame={item.id}
+                      />
+                      <p
+                        className="mt-2 w-full truncate text-[15px] font-black"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {item.name}
+                      </p>
+                      <p
+                        className="w-full truncate text-xs font-bold"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {item.description}
+                      </p>
+                    </div>
+
+                    <div className="mt-2.5">
+                      {active ? (
+                        <span
+                          className="flex h-10 w-full items-center justify-center gap-1 rounded-xl text-sm font-black uppercase tracking-wide"
+                          style={{ color: 'var(--duo-green-text)' }}
+                        >
+                          <Check className="h-4 w-4 stroke-[3]" />
+                          {t('profile.equipped')}
+                        </span>
+                      ) : unlocked ? (
+                        <button
+                          type="button"
+                          onClick={() => handleAvatarFrameAction(item.id, 0, item.name)}
+                          className="duo-btn duo-btn-white h-10 w-full text-sm uppercase tracking-wide"
+                        >
+                          {t('profile.equip')}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleAvatarFrameAction(item.id, item.priceStars, item.name)
+                          }
+                          className="duo-btn duo-btn-gold flex h-10 w-full items-center justify-center gap-1 text-sm"
+                        >
+                          <Star className="h-3.5 w-3.5 fill-current" />
+                          {item.priceStars}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
