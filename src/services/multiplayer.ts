@@ -44,6 +44,7 @@ const PROFILE_KEY = 'lets_turn_profile_v1';
 const ROOMS_KEY = 'lets_turn_rooms_v1';
 const CHANNEL_NAME = 'lets_turn_realtime_v1';
 const STREAK_ZERO_MIGRATION_KEY = 'lets_turn_streak_zero_v1';
+const CLEAN_SEED_STATS_MIGRATION_KEY = 'lets_turn_clean_seed_v1';
 
 export const TURN_TIMEOUT_MS = 30_000;
 export const BOT_PROPOSAL_DELAY_MS = 20_000;
@@ -99,14 +100,43 @@ export function loadProfile(): PlayerProfile | null {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PlayerProfile;
+    let dirty = false;
+
     if (!localStorage.getItem(STREAK_ZERO_MIGRATION_KEY)) {
       parsed.streak = 0;
       parsed.lastPlayedDate = null;
       parsed.unlockedBadges = (parsed.unlockedBadges ?? []).filter(
         (id) => id !== 'inseparable'
       );
-      saveProfile(parsed);
       localStorage.setItem(STREAK_ZERO_MIGRATION_KEY, '1');
+      dirty = true;
+    }
+
+    // Remove legacy fake seed stats ("Carole" COLD->WARM, 12 fake games, 420 fake XP)
+    if (!localStorage.getItem(CLEAN_SEED_STATS_MIGRATION_KEY)) {
+      const hadSeedChain = (parsed.savedBestChains ?? []).some((c) => c.id === 'seed-chain-1');
+      if (hadSeedChain) {
+        parsed.savedBestChains = (parsed.savedBestChains ?? []).filter(
+          (c) => c.id !== 'seed-chain-1'
+        );
+        const realGamesPlayed = Math.max(0, (parsed.gamesPlayed ?? 0) - 12);
+        const realGamesWon = Math.max(0, (parsed.gamesWon ?? 0) - 11);
+        parsed.gamesPlayed = realGamesPlayed;
+        parsed.gamesWon = realGamesWon;
+        parsed.optimalWins = Math.max(0, (parsed.optimalWins ?? 0) - 4);
+        parsed.noHintWins = Math.max(0, (parsed.noHintWins ?? 0) - 3);
+        parsed.xp = Math.max(0, (parsed.xp ?? 0) - 420);
+        if (realGamesWon === 0) {
+          parsed.fastestWinSeconds = null;
+          parsed.uniqueWordsUsed = [];
+        }
+        dirty = true;
+      }
+      localStorage.setItem(CLEAN_SEED_STATS_MIGRATION_KEY, '1');
+    }
+
+    if (dirty) {
+      saveProfile(parsed);
     }
     return parsed;
   } catch {
@@ -125,39 +155,28 @@ export function createInitialProfile(
     name: name.trim() || 'Alex',
     avatarId,
     color,
-    xp: 420,
+    xp: 0,
     stars: 5,
     streak: 0,
     lastPlayedDate: null,
-    gamesPlayed: 12,
-    gamesWon: 11,
-    optimalWins: 4,
-    noHintWins: 3,
-    fastestWinSeconds: 52,
+    gamesPlayed: 0,
+    gamesWon: 0,
+    optimalWins: 0,
+    noHintWins: 0,
+    fastestWinSeconds: null,
     longestWordSolved: 4,
-    uniqueWordsUsed: ['WINE', 'WING', 'SING', 'COLD', 'WARM', 'LOVE', 'HATE'],
+    uniqueWordsUsed: [],
     unlockedBadges: [],
     unlockedThemes: ['classic'],
     activeTheme: 'classic',
     unlockedAvatars: [0, 1, 2, 3, 4, 5],
     unlockedParticles: ['confetti'],
     activeParticle: 'confetti',
-    savedBestChains: [
-      {
-        id: 'seed-chain-1',
-        startWord: 'COLD',
-        targetWord: 'WARM',
-        words: ['COLD', 'WOLD', 'WORD', 'WARD', 'WARM'],
-        optimalSteps: 4,
-        actualSteps: 4,
-        partnerName: 'Carole',
-        language: 'EN',
-        completedAt: Date.now() - 86400 * 1000,
-      },
-    ],
+    savedBestChains: [],
   };
   saveProfile(profile);
   localStorage.setItem(STREAK_ZERO_MIGRATION_KEY, '1');
+  localStorage.setItem(CLEAN_SEED_STATS_MIGRATION_KEY, '1');
   return profile;
 }
 
@@ -893,15 +912,77 @@ export function subscribeRealtimeSync(
   };
 }
 
-export async function requestPushPermissionAndNotify(title: string, body: string): Promise<void> {
+export async function refreshRemoteRooms(
+  profile: PlayerProfile,
+  currentRooms: Record<string, GameRoom>
+): Promise<Record<string, GameRoom> | null> {
+  const uid = await ensureSupabaseSession();
+  if (!uid) return null;
+
+  const remoteRooms = await loadRemoteRooms(uid, currentRooms);
+  if (Object.keys(remoteRooms).length === 0) return null;
+
+  const mergedRooms: Record<string, GameRoom> = { ...currentRooms };
+  let changed = false;
+
+  for (const [code, remoteRoom] of Object.entries(remoteRooms)) {
+    const existing = mergedRooms[code];
+    if (!existing) {
+      mergedRooms[code] = remoteRoom;
+      changed = true;
+      continue;
+    }
+    if (existing.status === 'completed' && remoteRoom.status !== 'completed') {
+      continue;
+    }
+    const existingWaitingOrBot =
+      existing.autoPartnerEnabled ||
+      isWaitingPartner(existing.partnerPlayer.playerId) ||
+      isBotPartner(existing.partnerPlayer.playerId);
+    const remoteHasRealPartner =
+      !remoteRoom.autoPartnerEnabled &&
+      !isWaitingPartner(remoteRoom.partnerPlayer.playerId) &&
+      !isBotPartner(remoteRoom.partnerPlayer.playerId);
+    if (
+      (remoteRoom.status === 'completed' && existing.status !== 'completed') ||
+      remoteRoom.moves.length > existing.moves.length ||
+      remoteRoom.undoPenaltyCount > existing.undoPenaltyCount ||
+      (existingWaitingOrBot && remoteHasRealPartner) ||
+      (remoteRoom.moves.length === existing.moves.length &&
+        remoteRoom.currentTurnPlayerId !== existing.currentTurnPlayerId)
+    ) {
+      mergedRooms[code] = {
+        ...remoteRoom,
+        turnStartedAt:
+          remoteRoom.currentTurnPlayerId !== existing.currentTurnPlayerId ||
+          remoteRoom.moves.length > existing.moves.length
+            ? Date.now()
+            : existing.turnStartedAt ?? remoteRoom.turnStartedAt,
+      };
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    saveRooms(mergedRooms);
+    return mergedRooms;
+  }
+  return null;
+}
+
+export async function requestNotificationPermissionOnGesture(): Promise<void> {
   if (typeof Notification === 'undefined') return;
   if (Notification.permission === 'default') {
     try {
       await Notification.requestPermission();
     } catch {
-      return;
+      // Ignore permission rejection
     }
   }
+}
+
+export async function requestPushPermissionAndNotify(title: string, body: string): Promise<void> {
+  if (typeof Notification === 'undefined') return;
   if (Notification.permission === 'granted' && document.hidden) {
     try {
       const reg = await navigator.serviceWorker?.getRegistration();

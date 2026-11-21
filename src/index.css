@@ -141,6 +141,16 @@ body {
   background-color: var(--bg-app);
   color: var(--text-primary);
   overscroll-behavior-y: contain;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* Tuile Duolingo exacte issue du Figma (border-b-7, rounded-[10px], #fffdfe, #e7e4e7) */

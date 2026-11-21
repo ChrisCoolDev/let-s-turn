@@ -23,6 +23,7 @@ import { isPlural, useI18n } from '../i18n';
 import {
   BOT_PROPOSAL_DELAY_MS,
   broadcastTypingState,
+  requestNotificationPermissionOnGesture,
   resolveRoomParticipants,
   TURN_TIMEOUT_MS,
 } from '../services/multiplayer';
@@ -466,6 +467,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   };
 
   const handleInviteCopy = async () => {
+    void requestNotificationPermissionOnGesture();
     const url = `${window.location.origin}/join/${room.code}`;
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
@@ -510,8 +512,9 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
   };
 
   const recentMoves = useMemo(() => {
-    return [...room.moves].reverse().slice(0, 3);
-  }, [room.moves]);
+    const limit = hasDraftChange ? 1 : 3;
+    return [...room.moves].reverse().slice(0, limit);
+  }, [room.moves, hasDraftChange]);
 
   const rows = keyboardLayout === 'AZERTY' ? AZERTY_ROWS : QWERTY_ROWS;
 
@@ -820,7 +823,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         {/* Vérification en direct que la lettre remplacée forme un mot qui a du sens */}
         {hasDraftChange && draftMeaning && (
           <div
-            className={`animate-pop-in mt-4 flex w-full items-start gap-2.5 rounded-2xl border-2 px-4 py-3 text-left ${
+            className={`animate-pop-in mt-3 flex w-full items-start gap-2.5 rounded-2xl border-2 px-3.5 py-2.5 text-left ${
               alreadyPlayedStep !== null
                 ? 'border-[var(--duo-gold)] bg-[var(--duo-gold-bg)] text-[var(--duo-gold-text)]'
                 : draftMeaning.valid
@@ -859,7 +862,7 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
         )}
 
         {/* Journal Conversationnel */}
-        <div className="mt-5 w-full space-y-2 text-center">
+        <div className={`${hasDraftChange ? 'mt-2.5' : 'mt-4'} w-full space-y-1.5 text-center`}>
           {recentMoves.length === 0 ? (
             <p className="text-base font-bold text-[var(--text-muted)]">
               {t('board.startWordPromptPrefix')}{' '}

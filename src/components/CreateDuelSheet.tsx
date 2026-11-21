@@ -3,6 +3,7 @@ import { ArrowDown, ArrowRight, Check, Copy, Play, Shuffle, Sparkles, X } from '
 import { ShareIcon } from './FigmaAssets';
 import { WordTiles } from './WordTiles';
 import { useI18n } from '../i18n';
+import { requestNotificationPermissionOnGesture } from '../services/multiplayer';
 import type { GameMode, GameRoom, Language, WordLength } from '../types/game';
 
 interface CreateDuelSheetProps {
@@ -111,6 +112,7 @@ export const CreateDuelSheet: React.FC<CreateDuelSheetProps> = ({
   }, [onClose]);
 
   const handleValidate = () => {
+    void requestNotificationPermissionOnGesture();
     const finalMode: GameMode = isDaily ? 'daily' : 'coop';
     const room = onCreateRoom(language, wordLength, finalMode);
     setCreatedRoom(room);

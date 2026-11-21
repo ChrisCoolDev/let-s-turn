@@ -31,6 +31,7 @@ import {
   pickSmartPartnerMove,
   planBotTurnBehavior,
   pushRemoteMove,
+  refreshRemoteRooms,
   requestPushPermissionAndNotify,
   resolveRoomParticipants,
   type RoomUpdateMeta,
@@ -135,11 +136,114 @@ export function App() {
   const profileRef = useRef(profile);
   profileRef.current = profile;
 
-  // Sync theme attribute to <html>
+  // Sync theme attribute to <html> + mobile PWA status bar theme-color
   useEffect(() => {
     const theme = profile?.activeTheme ?? 'classic';
     document.documentElement.setAttribute('data-theme', theme);
+    const themeColors: Record<ThemeId, string> = {
+      classic: '#ffffff',
+      oled: '#000000',
+      cyberpunk: '#0d0f1a',
+      nyt: '#f7f4ec',
+      pastel: '#fff6f9',
+    };
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', themeColors[theme] ?? '#ffffff');
+    }
+    const metaAppleBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (metaAppleBar) {
+      metaAppleBar.setAttribute(
+        'content',
+        theme === 'oled' || theme === 'cyberpunk' ? 'black-translucent' : 'default'
+      );
+    }
   }, [profile?.activeTheme]);
+
+  // Mobile Back button / swipe-back gesture navigation (prevents accidental PWA exit on Android/iOS)
+  const isPoppingHistoryRef = useRef(false);
+  const showCreateSheetRef = useRef(showCreateSheet);
+  showCreateSheetRef.current = showCreateSheet;
+  const activeTourRef = useRef(activeTour);
+  activeTourRef.current = activeTour;
+
+  useEffect(() => {
+    if (!profile) return;
+    if (isPoppingHistoryRef.current) {
+      isPoppingHistoryRef.current = false;
+      return;
+    }
+    if (screen !== 'hub' || showCreateSheet) {
+      window.history.pushState(
+        { letsTurnScreen: screen, roomCode: activeRoomCode, sheet: showCreateSheet },
+        ''
+      );
+    }
+  }, [profile, screen, activeRoomCode, showCreateSheet]);
+
+  useEffect(() => {
+    const onPopState = (e: PopStateEvent) => {
+      if (activeTourRef.current !== null) {
+        setActiveTour(null);
+        return;
+      }
+      if (showCreateSheetRef.current) {
+        isPoppingHistoryRef.current = true;
+        setShowCreateSheet(false);
+        return;
+      }
+      const targetScreen = (e.state as { letsTurnScreen?: Screen } | null)?.letsTurnScreen;
+      if (targetScreen && targetScreen !== screenRef.current) {
+        isPoppingHistoryRef.current = true;
+        setScreen(targetScreen);
+        return;
+      }
+      if (screenRef.current !== 'hub') {
+        isPoppingHistoryRef.current = true;
+        setScreen('hub');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Re-sync rooms from Supabase when mobile device wakes from sleep, returns from WhatsApp, or regains network
+  useEffect(() => {
+    if (!profile?.playerId) return;
+    let syncInFlight = false;
+
+    const syncFromRemoteOnWake = async () => {
+      if (syncInFlight || document.visibilityState === 'hidden') return;
+      const activeProfile = profileRef.current;
+      if (!activeProfile) return;
+      syncInFlight = true;
+      try {
+        const updatedRooms = await refreshRemoteRooms(activeProfile, roomsRef.current);
+        if (updatedRooms) {
+          roomsRef.current = updatedRooms;
+          setRooms(updatedRooms);
+        }
+      } finally {
+        syncInFlight = false;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void syncFromRemoteOnWake();
+      }
+    };
+    const onOnline = () => {
+      void syncFromRemoteOnWake();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [profile?.playerId]);
 
   // Bootstrap Supabase anonymous session & sync existing profile / rooms
   useEffect(() => {

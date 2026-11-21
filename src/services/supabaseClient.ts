@@ -330,8 +330,22 @@ function mapDbMoves(
   startWord: string,
   undoPenaltyCount: number
 ): WordMove[] {
-  let mapped = rows
-    .slice()
+  // 1. Deduplicate by step_number (when Undo + new move inserts a second row at the same step_number)
+  const latestByStep = new Map<number, DbMoveRow>();
+  for (const row of rows) {
+    const prev = latestByStep.get(row.step_number);
+    if (!prev) {
+      latestByStep.set(row.step_number, row);
+    } else {
+      const prevTs = Date.parse(prev.created_at) || 0;
+      const curTs = Date.parse(row.created_at) || 0;
+      if (curTs >= prevTs) {
+        latestByStep.set(row.step_number, row);
+      }
+    }
+  }
+
+  let mapped = Array.from(latestByStep.values())
     .sort((a, b) => a.step_number - b.step_number)
     .map((row): WordMove => {
       const actor =
@@ -352,15 +366,13 @@ function mapDbMoves(
       };
     });
 
-  // If moves table contains undone moves (no DELETE RLS policy), align chain tail with current_word
-  if (undoPenaltyCount > 0) {
-    if (currentWord === startWord) {
-      mapped = [];
-    } else if (mapped.length > 0 && mapped[mapped.length - 1].word !== currentWord) {
-      const matchIdx = mapped.map((m) => m.word).lastIndexOf(currentWord);
-      if (matchIdx !== -1) {
-        mapped = mapped.slice(0, matchIdx + 1);
-      }
+  // 2. If moves table contains trailing undone moves (no DELETE RLS policy), align chain tail with current_word
+  if (currentWord === startWord) {
+    mapped = [];
+  } else if (mapped.length > 0 && (undoPenaltyCount > 0 || mapped[mapped.length - 1].word !== currentWord)) {
+    const matchIdx = mapped.map((m) => m.word).lastIndexOf(currentWord);
+    if (matchIdx !== -1) {
+      mapped = mapped.slice(0, matchIdx + 1);
     }
   }
 
