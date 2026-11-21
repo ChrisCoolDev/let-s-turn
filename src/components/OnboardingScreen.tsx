@@ -4,8 +4,9 @@ import { AVATAR_LABELS, FigmaAvatar, FigmaFlameIcon } from './FigmaAssets';
 import { LanguageToggle } from './LanguageToggle';
 import { getPlayerColors, PLAYER_COLORS } from '../engine/gamification';
 import { useI18n } from '../i18n';
+import { usePwaInstall } from '../services/pwaInstall';
 import type { AvatarId } from '../types/game';
-import { PwaInstallBanner } from './PwaInstallBanner';
+import { PwaInstallBanner, PwaInstallModal } from './PwaInstallBanner';
 
 interface OnboardingScreenProps {
   pendingJoinCode: string | null;
@@ -25,6 +26,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   const [avatarId, setAvatarId] = useState<AvatarId>(1);
   const [color, setColor] = useState<string>(PLAYER_COLORS[0].hex);
   const [error, setError] = useState('');
+  const pwa = usePwaInstall();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,7 +237,20 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
         </form>
       </div>
 
-      <PwaInstallBanner />
+      <PwaInstallBanner
+        isStandalone={pwa.isStandalone}
+        bannerDismissed={pwa.bannerDismissed}
+        isIos={pwa.isIos}
+        platform={pwa.platform}
+        onInstallClick={pwa.triggerInstall}
+        onDismiss={pwa.dismissBanner}
+      />
+
+      <PwaInstallModal
+        open={pwa.showGuideModal}
+        platform={pwa.platform}
+        onClose={() => pwa.setShowGuideModal(false)}
+      />
     </div>
   );
 };

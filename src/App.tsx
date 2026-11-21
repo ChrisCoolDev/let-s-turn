@@ -1824,6 +1824,15 @@ export function App() {
           highlightRadius: 18,
           padding: 6,
         },
+        {
+          id: 'hub-quests',
+          targetSelector: '[data-tour="hub-quests"]',
+          title: t('tour.hub.quests.title'),
+          description: t('tour.hub.quests.desc'),
+          preferredPlacement: 'top',
+          highlightRadius: 18,
+          padding: 6,
+        },
       ];
     }
     if (activeTour === 'board') {

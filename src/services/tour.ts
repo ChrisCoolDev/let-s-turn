@@ -1,4 +1,4 @@
-const TOUR_STORAGE_KEY = 'lets_turn_tour_v1';
+const TOUR_STORAGE_KEY = 'lets_turn_tour_v2';
 
 export interface TourState {
   hubDone: boolean;

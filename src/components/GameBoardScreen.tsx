@@ -877,68 +877,69 @@ export const GameBoardScreen: React.FC<GameBoardScreenProps> = ({
       {/* CENTRE DU PLATEAU (Fidèle aux frames Figma 1:5 et 1:35) */}
       <main className="my-2 flex flex-1 flex-col items-center justify-start pt-4">
         {/* Titre Figma node 1:34 : "Let’s turn WINE to SLIM" */}
-        <h1
-          data-tour="board-goal"
-          className="text-center text-[22px] font-extrabold tracking-tight"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          Let&apos;s turn <span className="font-black">{room.startWord}</span> to{' '}
-          <span className="font-black text-[var(--duo-green)]">{room.targetWord}</span>
-        </h1>
+        <div data-tour="board-goal" className="flex flex-col items-center">
+          <h1
+            className="text-center text-[22px] font-extrabold tracking-tight"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Let&apos;s turn <span className="font-black">{room.startWord}</span> to{' '}
+            <span className="font-black text-[var(--duo-green)]">{room.targetWord}</span>
+          </h1>
 
-        {/* Pilules compactes : Lettre Dorée & Tempo Combo */}
-        {(goldenLetter || tempoCombo >= 2) && (
-          <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1.5">
-            {goldenLetter && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-black"
-                style={
-                  goldenClaimed
-                    ? {
-                        borderColor: 'var(--duo-green)',
-                        backgroundColor: 'var(--duo-green-bg)',
-                        color: 'var(--duo-green-text)',
-                      }
-                    : {
-                        borderColor: 'var(--duo-gold)',
-                        backgroundColor: 'var(--duo-gold-bg)',
-                        color: 'var(--duo-gold-text)',
-                      }
-                }
-              >
-                {goldenClaimed ? (
-                  <>
-                    <Check className="h-3 w-3 stroke-[3]" />
-                    <span>{t('board.goldenLetterDone')}</span>
-                    <span className="inline-flex items-center gap-0.5">
-                      +1 <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
-                    <span>{t('board.goldenLetterLabel', { letter: goldenLetter })}</span>
-                    <span className="opacity-80">· +1</span>
-                    <Star className="h-2.5 w-2.5 fill-[#ffc800] text-[#e5a400]" />
-                  </>
-                )}
-              </span>
-            )}
-            {tempoCombo >= 2 && (
-              <span
-                className="animate-pop-in inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-black"
-                style={{
-                  borderColor: 'var(--duo-orange)',
-                  backgroundColor: 'var(--duo-orange-bg)',
-                  color: 'var(--duo-orange-shadow)',
-                }}
-              >
-                <FigmaFlameIcon size={13} />
-                <span>{t('board.comboBadge', { mult: comboMult })}</span>
-              </span>
-            )}
-          </div>
-        )}
+          {/* Pilules compactes : Lettre Dorée & Tempo Combo */}
+          {(goldenLetter || tempoCombo >= 2) && (
+            <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1.5">
+              {goldenLetter && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-black"
+                  style={
+                    goldenClaimed
+                      ? {
+                          borderColor: 'var(--duo-green)',
+                          backgroundColor: 'var(--duo-green-bg)',
+                          color: 'var(--duo-green-text)',
+                        }
+                      : {
+                          borderColor: 'var(--duo-gold)',
+                          backgroundColor: 'var(--duo-gold-bg)',
+                          color: 'var(--duo-gold-text)',
+                        }
+                  }
+                >
+                  {goldenClaimed ? (
+                    <>
+                      <Check className="h-3 w-3 stroke-[3]" />
+                      <span>{t('board.goldenLetterDone')}</span>
+                      <span className="inline-flex items-center gap-0.5">
+                        +1 <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Star className="h-3 w-3 fill-[#ffc800] text-[#e5a400]" />
+                      <span>{t('board.goldenLetterLabel', { letter: goldenLetter })}</span>
+                      <span className="opacity-80">· +1</span>
+                      <Star className="h-2.5 w-2.5 fill-[#ffc800] text-[#e5a400]" />
+                    </>
+                  )}
+                </span>
+              )}
+              {tempoCombo >= 2 && (
+                <span
+                  className="animate-pop-in inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-black"
+                  style={{
+                    borderColor: 'var(--duo-orange)',
+                    backgroundColor: 'var(--duo-orange-bg)',
+                    color: 'var(--duo-orange-shadow)',
+                  }}
+                >
+                  <FigmaFlameIcon size={13} />
+                  <span>{t('board.comboBadge', { mult: comboMult })}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Toast discret pour erreurs / indices / notifications */}
         <div className="mt-2.5 flex min-h-8 items-center justify-center">

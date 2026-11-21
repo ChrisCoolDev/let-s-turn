@@ -311,22 +311,46 @@ export const fr = {
   'hub.modeDuelTag': 'Duel',
   'hub.duelScoreSummary': '{me} vs {partner} pts',
 
+  'pwa.hubPill': 'Installer',
   'pwa.bannerTitle': "Installe l'app sur ton écran d'accueil",
   'pwa.bannerSubtitle': 'Pour recevoir les tours de ton partenaire en direct !',
-  'pwa.btnView': 'Voir',
+  'pwa.bannerSubtitleIos': '3 gestes rapides sur iPhone pour jouer en plein écran !',
+  'pwa.btnInstallIos': 'Guide iOS',
   'pwa.btnInstall': 'Installer',
   'pwa.dismissAria': "Fermer la bannière d'installation",
   'pwa.modalTitle': "Installer Let's Turn",
-  'pwa.modalSubIos': 'Sur iPhone / Safari, ajoute l’app en 2 secondes :',
-  'pwa.modalSubOther': 'Ajoute l’app comme une vraie application mobile :',
-  'pwa.step1Prefix': "1. Touche l'icône",
+  'pwa.badgeIosSafari': 'Safari · iPhone / iPad',
+  'pwa.badgeIosChrome': 'Chrome · iOS',
+  'pwa.badgeIosFirefox': 'Firefox · iOS',
+  'pwa.badgeIosInapp': 'Navigateur intégré',
+  'pwa.badgeOther': 'Application mobile',
+  'pwa.modalSubIosSafari': 'Suis ces 3 étapes visuelles dans Safari (10 secondes) :',
+  'pwa.modalSubIosChrome': 'Sur Chrome iOS, le bouton Partager est en haut à droite :',
+  'pwa.modalSubIosFirefox': 'Pour installer sur iPhone, ouvre ce lien dans Safari :',
+  'pwa.modalSubIosInapp':
+    "Apple bloque l'installation depuis WhatsApp, Instagram ou Messenger. Ouvre d'abord dans Safari :",
+  'pwa.modalSubOther': 'Ajoute Let’s Turn sur ton écran comme une vraie app :',
+  'pwa.inappStep1':
+    "Touche l'icône Boussole (ou « ••• » → Ouvrir dans Safari) en bas à droite.",
+  'pwa.inappStep2':
+    "Une fois dans Safari, touche Partager → Sur l'écran d'accueil → Ajouter.",
+  'pwa.copyLink': 'Copier le lien pour Safari',
+  'pwa.linkCopied': 'Lien copié ! Colle-le dans Safari',
+  'pwa.iosSafariStep1Prefix': "Touche l'icône",
   'pwa.step1Highlight': 'Partager',
-  'pwa.step1Suffix': 'dans la barre du navigateur',
-  'pwa.step2Prefix': '2. Choisis',
+  'pwa.iosSafariStep1Suffix': 'tout en bas au centre de Safari.',
+  'pwa.iosChromeStep1Prefix': "Touche l'icône",
+  'pwa.iosChromeStep1Suffix': "en haut à droite de la barre d'adresse.",
+  'pwa.iosStep2Prefix': 'Fais défiler le menu vers le bas et choisis',
   'pwa.step2Highlight': "Sur l'écran d'accueil",
-  'pwa.step2Suffix': 'puis Valider',
-  'pwa.step3Other':
-    "Ou clique sur l'icône d'installation dans la barre d'adresse Chrome/Edge.",
+  'pwa.iosStep3Prefix': 'Appuie sur',
+  'pwa.iosAddButton': 'Ajouter',
+  'pwa.iosStep3Suffix': "en haut à droite : l'app apparaît sur ton iPhone !",
+  'pwa.iosSafariPointer': 'Le bouton Partager est juste ici en bas',
+  'pwa.otherStep1':
+    "Ouvre le menu du navigateur (« ⋮ ») puis touche « Installer l'application » ou « Ajouter à l'écran d'accueil ».",
+  'pwa.otherStep2':
+    "Sur ordinateur (Chrome / Edge), clique sur l'icône d'installation à droite de la barre d'adresse.",
   'pwa.gotIt': 'Compris !',
 
   'notifications.partnerMovedTitle': '{name} a joué {word} !',
@@ -447,34 +471,37 @@ export const fr = {
   'tour.replayButton': 'Guide',
   'tour.replayAria': 'Ouvrir le guide interactif',
 
-  'tour.hub.profile.title': 'Ton profil & tes récompenses',
+  'tour.hub.profile.title': 'Profil, Badges & Boutique',
   'tour.hub.profile.desc':
-    "Gagne de l'XP, fais grimper ta série et dépense tes étoiles pour débloquer thèmes et effets de victoire.",
-  'tour.hub.activeGames.title': 'Tes parties en cours',
+    'Suis tes 20 niveaux, ta flamme (protégée par le Gel de Série) et tes étoiles. Touche ici pour voir tes badges Bronze→Diamant, ton Lexique et débloquer thèmes, tuiles et cadres !',
+  'tour.hub.activeGames.title': 'Parties en cours & Flammes de duo',
   'tour.hub.activeGames.desc':
-    "Retrouve tous tes duels ici. Une partie contre Miyu (bot) t'attend déjà pour t'entraîner !",
-  'tour.hub.startDuel.title': 'Défie un ami ou Miyu',
+    "Retrouve tes parties Coop et Duel ici. Maintiens une flamme de duo avec chaque partenaire et relance un ami en un tap s'il tarde à jouer !",
+  'tour.hub.startDuel.title': 'Coop, Duel ou Miyu Grand Maître',
   'tour.hub.startDuel.desc':
-    'Choisis FR/EN et 4 ou 5 lettres, puis partage le lien. Personne après 20s ? Miyu peut prendre le relais !',
+    'Crée une partie Coop ou Duel (aux points) avec un ami, ou affronte Miyu en solo sur 3 niveaux jusqu’à Grand Maître (12s · x2 étoiles) !',
   'tour.hub.daily.title': 'Le défi du jour',
   'tour.hub.daily.desc':
-    "Un nouveau puzzle chaque jour avec bonus d'XP et d'étoiles. Enchaîne les jours pour booster ta flamme !",
+    "Un puzzle commun chaque jour avec bonus d'XP et d'étoiles. Enchaîne les jours pour faire grimper ta flamme !",
+  'tour.hub.quests.title': 'Quêtes & Coffre du jour',
+  'tour.hub.quests.desc':
+    'Complète tes 3 missions quotidiennes pour gagner des étoiles, puis ouvre le Coffre du jour (+3 étoiles · +80 XP) !',
 
-  'tour.board.goal.title': "L'objectif du duel",
+  'tour.board.goal.title': 'Objectif & Lettre Dorée',
   'tour.board.goal.desc':
-    'Transforme le mot de départ en mot cible en changeant une seule lettre par tour, en un minimum de coups.',
+    'Transforme le mot de départ en mot cible (1 lettre par tour). Utilise la Lettre Dorée affichée ici pour +1 étoile bonus, et joue vite pour activer le Combo Tempo !',
   'tour.board.tiles.title': 'Touche une tuile',
   'tour.board.tiles.desc':
-    'Sélectionne la lettre à remplacer puis tape une nouvelle lettre au clavier. Chaque mot doit exister !',
-  'tour.board.turnStatus.title': 'Tour par tour & chrono 30s',
+    'Choisis la lettre à remplacer puis tape au clavier (la touche dorée brille !). Chaque mot doit exister ; en mode Duel, chaque lettre bien placée rapporte des points.',
+  'tour.board.turnStatus.title': 'Chrono, Flamme & Réactions',
   'tour.board.turnStatus.desc':
-    'Vous jouez à tour de rôle avec 30 secondes par coup avant que la main ne passe automatiquement.',
-  'tour.board.tools.title': 'Indice, Annuler & Clavier',
+    'Suis le tour en cours (30s, ou 20s / 12s contre Miyu avancée) et votre flamme de duo. Envoie des réactions rapides en bas pour encourager ton partenaire !',
+  'tour.board.tools.title': 'Indice, Bouclier +15s & Annuler',
   'tour.board.tools.desc':
-    'Bloqué ? Prends un indice contre 1 étoile, annule le dernier coup ou bascule entre AZERTY et QWERTY.',
-  'tour.board.submit.title': 'Valide ton mot !',
+    'Bloqué ? Prends un Indice (1 étoile) ou annule un coup. Quand il reste moins de 12s, utilise le Bouclier +15s (1 étoile) pour sauver ton tour !',
+  'tour.board.submit.title': 'Valide vite pour le Combo !',
   'tour.board.submit.desc':
-    'Dès que ton nouveau mot est reconnu, appuie ici pour jouer ton tour et faire avancer la chaîne.',
+    'Appuie ici dès que ton mot est reconnu. Enchaîne des coups valides en moins de 10s pour multiplier ton XP jusqu’à x3 !',
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -791,21 +818,45 @@ export const en: Record<TranslationKey, string> = {
   'hub.modeDuelTag': 'Duel',
   'hub.duelScoreSummary': '{me} vs {partner} pts',
 
+  'pwa.hubPill': 'Install',
   'pwa.bannerTitle': 'Install the app on your home screen',
   'pwa.bannerSubtitle': "Get notified live when it's your turn!",
-  'pwa.btnView': 'Guide',
+  'pwa.bannerSubtitleIos': '3 quick taps on iPhone for full-screen play!',
+  'pwa.btnInstallIos': 'iOS Guide',
   'pwa.btnInstall': 'Install',
   'pwa.dismissAria': 'Dismiss install banner',
   'pwa.modalTitle': "Install Let's Turn",
-  'pwa.modalSubIos': 'On iPhone / Safari, add the app in 2 seconds:',
-  'pwa.modalSubOther': 'Add the app just like a native mobile app:',
-  'pwa.step1Prefix': '1. Tap the',
+  'pwa.badgeIosSafari': 'Safari · iPhone / iPad',
+  'pwa.badgeIosChrome': 'Chrome · iOS',
+  'pwa.badgeIosFirefox': 'Firefox · iOS',
+  'pwa.badgeIosInapp': 'In-app browser',
+  'pwa.badgeOther': 'Mobile app',
+  'pwa.modalSubIosSafari': 'Follow these 3 quick steps in Safari (10 seconds):',
+  'pwa.modalSubIosChrome': 'On Chrome iOS, the Share button is at the top right:',
+  'pwa.modalSubIosFirefox': 'To install on iPhone, open this link in Safari:',
+  'pwa.modalSubIosInapp':
+    'Apple blocks installation inside WhatsApp, Instagram, or Messenger. Open in Safari first:',
+  'pwa.modalSubOther': "Add Let's Turn to your home screen like a native app:",
+  'pwa.inappStep1':
+    'Tap the Compass icon (or "•••" → Open in Safari) at the bottom right.',
+  'pwa.inappStep2': 'Once in Safari, tap Share → Add to Home Screen → Add.',
+  'pwa.copyLink': 'Copy link for Safari',
+  'pwa.linkCopied': 'Link copied! Paste it in Safari',
+  'pwa.iosSafariStep1Prefix': 'Tap the',
   'pwa.step1Highlight': 'Share',
-  'pwa.step1Suffix': 'icon in your browser bar',
-  'pwa.step2Prefix': '2. Choose',
+  'pwa.iosSafariStep1Suffix': 'icon at the bottom center of Safari.',
+  'pwa.iosChromeStep1Prefix': 'Tap the',
+  'pwa.iosChromeStep1Suffix': 'icon at the top right of the address bar.',
+  'pwa.iosStep2Prefix': 'Scroll down the share sheet and tap',
   'pwa.step2Highlight': 'Add to Home Screen',
-  'pwa.step2Suffix': 'then Confirm',
-  'pwa.step3Other': 'Or click the install icon in your Chrome/Edge address bar.',
+  'pwa.iosStep3Prefix': 'Tap',
+  'pwa.iosAddButton': 'Add',
+  'pwa.iosStep3Suffix': 'at the top right: the app appears on your home screen!',
+  'pwa.iosSafariPointer': 'The Share button is right down here',
+  'pwa.otherStep1':
+    'Open the browser menu ("⋮") and tap "Install app" or "Add to Home screen".',
+  'pwa.otherStep2':
+    'On desktop (Chrome / Edge), click the install icon on the right side of the address bar.',
   'pwa.gotIt': 'Got it!',
 
   'notifications.partnerMovedTitle': '{name} played {word}!',
@@ -926,32 +977,35 @@ export const en: Record<TranslationKey, string> = {
   'tour.replayButton': 'Guide',
   'tour.replayAria': 'Open interactive guide',
 
-  'tour.hub.profile.title': 'Your profile & rewards',
+  'tour.hub.profile.title': 'Profile, Badges & Shop',
   'tour.hub.profile.desc':
-    'Earn XP, grow your streak, and spend stars to unlock themes and victory effects.',
-  'tour.hub.activeGames.title': 'Your active games',
+    'Track your 20 levels, streak (protected by Streak Freeze), and stars. Tap here for Bronze→Diamond badges, your Lexicon, and shop themes, tiles & frames!',
+  'tour.hub.activeGames.title': 'Active games & Duo streaks',
   'tour.hub.activeGames.desc':
-    'Find all your ongoing duels here. A starter match against Miyu (bot) is ready for practice!',
-  'tour.hub.startDuel.title': 'Challenge a friend or Miyu',
+    "Find your Co-op and Duel matches here. Keep a Duo Streak alive with each partner and nudge a friend in one tap if it's their turn!",
+  'tour.hub.startDuel.title': 'Co-op, Duel or Grandmaster Miyu',
   'tour.hub.startDuel.desc':
-    'Pick FR/EN and 4 or 5 letters, then share the link. Nobody after 20s? Miyu can jump in!',
+    'Start a Co-op or points-based Duel with a friend, or face Miyu solo across 3 tiers up to Grandmaster (12s · 2x stars)!',
   'tour.hub.daily.title': 'Daily challenge',
   'tour.hub.daily.desc':
-    'A fresh puzzle every day with bonus XP and stars. Keep playing daily to grow your streak!',
+    'A shared puzzle every day with bonus XP and stars. Play daily to keep your streak burning!',
+  'tour.hub.quests.title': 'Daily Quests & Chest',
+  'tour.hub.quests.desc':
+    'Finish your 3 daily missions to earn stars, then unlock the Daily Chest (+3 stars · +80 XP)!',
 
-  'tour.board.goal.title': 'The goal of the duel',
+  'tour.board.goal.title': 'Goal & Golden Letter',
   'tour.board.goal.desc':
-    'Turn the start word into the target word by changing one letter per turn, in as few moves as possible.',
+    'Turn the start word into the target word (1 letter per turn). Use the Golden Letter shown here for +1 bonus star, and play fast to spark a Tempo Combo!',
   'tour.board.tiles.title': 'Tap a letter tile',
   'tour.board.tiles.desc':
-    'Select the letter you want to replace, then pick a new letter on the keyboard. Every word must be valid!',
-  'tour.board.turnStatus.title': 'Turn-based & 30s clock',
+    'Pick the letter to replace, then tap a key (the golden key glows!). Every word must be valid; in Duel mode, matching target letters scores points.',
+  'tour.board.turnStatus.title': 'Clock, Streak & Reactions',
   'tour.board.turnStatus.desc':
-    'Take turns with 30 seconds per move before the turn automatically passes over.',
-  'tour.board.tools.title': 'Hint, Undo & Keyboard',
+    'Watch the turn timer (30s, or 20s / 12s against higher Miyu tiers) and your Duo Streak. Send quick reactions below to cheer on your partner!',
+  'tour.board.tools.title': 'Hint, +15s Shield & Undo',
   'tour.board.tools.desc':
-    'Stuck? Spend 1 star for a hint, undo the last move, or switch between AZERTY and QWERTY.',
-  'tour.board.submit.title': 'Submit your word!',
+    'Stuck? Take a Hint (1 star) or undo a move. With under 12s left, trigger the +15s Time Shield (1 star) to save your turn!',
+  'tour.board.submit.title': 'Submit fast for Combo!',
   'tour.board.submit.desc':
-    'Once your new word is recognized, press here to play your turn and advance the ladder.',
+    'Press here once your word is valid. Chain valid moves under 10s to boost your XP multiplier up to x3!',
 };

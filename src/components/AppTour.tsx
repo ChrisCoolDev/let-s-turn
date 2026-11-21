@@ -167,13 +167,26 @@ export const AppTour: React.FC<AppTourProps> = ({ open, steps, onComplete, onSki
     if (!targetEl) return;
 
     const r = targetEl.getBoundingClientRect();
-    const outOfView = r.top < 24 || r.bottom > window.innerHeight - 24;
-    if (outOfView) {
-      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const isTall = r.height > window.innerHeight * 0.34;
+    const needsScroll =
+      r.top < 24 ||
+      r.bottom > window.innerHeight - 24 ||
+      (isTall && currentStep.preferredPlacement === 'top' && r.top < 240);
+    if (needsScroll) {
+      const block: ScrollLogicalPosition = isTall
+        ? currentStep.preferredPlacement === 'top'
+          ? 'end'
+          : 'start'
+        : 'center';
+      targetEl.scrollIntoView({ behavior: 'smooth', block });
     }
 
-    const settleTimer = window.setTimeout(measureAndPosition, 280);
-    return () => window.clearTimeout(settleTimer);
+    const settleTimer1 = window.setTimeout(measureAndPosition, 260);
+    const settleTimer2 = window.setTimeout(measureAndPosition, 540);
+    return () => {
+      window.clearTimeout(settleTimer1);
+      window.clearTimeout(settleTimer2);
+    };
   }, [open, currentStep, measureAndPosition]);
 
   // Synchronous pre-paint measurement & observers

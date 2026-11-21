@@ -7,6 +7,7 @@ import {
   Hash,
   HelpCircle,
   Plus,
+  Smartphone,
   Snowflake,
   Star,
   Swords,
@@ -28,7 +29,8 @@ import {
   isWaitingPartner,
   resolveRoomParticipants,
 } from '../services/multiplayer';
-import { PwaInstallBanner } from './PwaInstallBanner';
+import { usePwaInstall } from '../services/pwaInstall';
+import { PwaInstallBanner, PwaInstallModal } from './PwaInstallBanner';
 import type { DailyQuest, GameRoom, PlayerProfile, QuestTier } from '../types/game';
 
 interface HubScreenProps {
@@ -201,6 +203,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState('');
   const [now, setNow] = useState<number>(() => Date.now());
+  const pwa = usePwaInstall();
 
   const levelInfo = getLevelInfo(profile.xp, locale);
   const questState = ensureTodayQuests(profile);
@@ -389,22 +392,34 @@ export const HubScreen: React.FC<HubScreenProps> = ({
 
       {/* Zone 2 : Parties en cours (Asynchrone & Temps réel) */}
       <section className="mt-6">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-[15px] font-black uppercase tracking-wider text-[var(--text-muted)]">
             {t('hub.activeGames', { count: activeRooms.length })}
           </h2>
-          {onStartTour && (
-            <button
-              type="button"
-              onClick={onStartTour}
-              className="inline-flex items-center gap-1.5 rounded-full border-2 border-[var(--border-tile)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-black text-[var(--duo-blue-text)] transition hover:border-[var(--duo-blue)] active:scale-95"
-              aria-label={t('tour.replayAria')}
-              title={t('tour.replayAria')}
-            >
-              <HelpCircle className="h-3.5 w-3.5 stroke-[2.5]" />
-              {t('tour.replayButton')}
-            </button>
-          )}
+          <div className="flex items-center gap-1.5">
+            {!pwa.isStandalone && (
+              <button
+                type="button"
+                onClick={pwa.triggerInstall}
+                className="inline-flex items-center gap-1.5 rounded-full border-2 border-[var(--duo-blue)] bg-[var(--duo-blue-bg)] px-2.5 py-1 text-xs font-black text-[var(--duo-blue-text)] transition active:scale-95"
+              >
+                <Smartphone className="h-3.5 w-3.5 stroke-[2.5]" />
+                {t('pwa.hubPill')}
+              </button>
+            )}
+            {onStartTour && (
+              <button
+                type="button"
+                onClick={onStartTour}
+                className="inline-flex items-center gap-1.5 rounded-full border-2 border-[var(--border-tile)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-black text-[var(--duo-blue-text)] transition hover:border-[var(--duo-blue)] active:scale-95"
+                aria-label={t('tour.replayAria')}
+                title={t('tour.replayAria')}
+              >
+                <HelpCircle className="h-3.5 w-3.5 stroke-[2.5]" />
+                {t('tour.replayButton')}
+              </button>
+            )}
+          </div>
         </div>
 
         {activeRooms.length === 0 ? (
@@ -663,7 +678,7 @@ export const HubScreen: React.FC<HubScreenProps> = ({
       />
 
       {/* Quêtes du jour & Coffre quotidien */}
-      <section className="duo-card mt-5 p-4">
+      <section data-tour="hub-quests" className="duo-card mt-5 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-[15px] font-black uppercase tracking-wider text-[var(--text-muted)]">
             {t('quests.title')}
@@ -829,7 +844,20 @@ export const HubScreen: React.FC<HubScreenProps> = ({
         </div>
       </section>
 
-      <PwaInstallBanner />
+      <PwaInstallBanner
+        isStandalone={pwa.isStandalone}
+        bannerDismissed={pwa.bannerDismissed}
+        isIos={pwa.isIos}
+        platform={pwa.platform}
+        onInstallClick={pwa.triggerInstall}
+        onDismiss={pwa.dismissBanner}
+      />
+
+      <PwaInstallModal
+        open={pwa.showGuideModal}
+        platform={pwa.platform}
+        onClose={() => pwa.setShowGuideModal(false)}
+      />
 
       {/* Modale Rejoindre avec un code */}
       {showJoinModal && (
